@@ -209,6 +209,167 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// JWT middleware for protected routes
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Financial Data Endpoints
+
+// Get user's financial summary
+app.get('/api/financial/summary', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Mock financial data - replace with real data from your financial aggregation service
+    const summary = {
+      netWorth: 124500.50,
+      totalAssets: 150000.00,
+      totalLiabilities: 25500.50,
+      monthlyIncome: 8200.00,
+      monthlyExpenses: 5400.00,
+      accounts: [
+        {
+          id: 'acc_1',
+          name: 'RBC Checking',
+          type: 'checking',
+          balance: 2450.00,
+          currency: 'CAD'
+        },
+        {
+          id: 'acc_2',
+          name: 'Tangerine Savings',
+          type: 'savings',
+          balance: 15800.00,
+          currency: 'CAD'
+        }
+      ]
+    };
+    
+    res.json(summary);
+  } catch (error) {
+    console.error('Financial summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch financial summary' });
+  }
+});
+
+// Get user's goals
+app.get('/api/goals', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Mock goals data - replace with real database queries
+    const goals = [
+      {
+        id: 'goal_1',
+        userId: userId,
+        title: 'Emergency Fund',
+        targetAmount: 10000.00,
+        currentAmount: 8500.00,
+        targetDate: '2025-12-31',
+        priority: 'high'
+      },
+      {
+        id: 'goal_2',
+        userId: userId,
+        title: 'New Car Fund',
+        targetAmount: 25000.00,
+        currentAmount: 12000.00,
+        targetDate: '2026-06-30',
+        priority: 'medium'
+      }
+    ];
+    
+    res.json(goals);
+  } catch (error) {
+    console.error('Goals fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch goals' });
+  }
+});
+
+// AI Chat endpoint
+app.post('/api/ai/chat', authenticateToken, async (req, res) => {
+  try {
+    const { message, context } = req.body;
+    const userId = req.user.userId;
+    
+    // Mock AI response - replace with real AI service integration
+    const aiResponse = {
+      message: `Hey there! I understand you're asking about: "${message}". Based on your financial data, here's what I think...`,
+      tone: 'friendly',
+      supportingData: [
+        'Your current net worth is $124,500',
+        'You\'re on track with your emergency fund goal'
+      ],
+      recommendations: [
+        'Consider increasing your savings rate by 5%',
+        'You have room in your entertainment budget'
+      ],
+      followUpQuestions: [
+        'Would you like to know more about your spending patterns?',
+        'Should we look at optimizing your budget?'
+      ]
+    };
+    
+    res.json(aiResponse);
+  } catch (error) {
+    console.error('AI chat error:', error);
+    res.status(500).json({ error: 'AI chat failed' });
+  }
+});
+
+// Get user's transactions
+app.get('/api/transactions', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { limit = 50, offset = 0 } = req.query;
+    
+    // Mock transaction data - replace with real data
+    const transactions = [
+      {
+        id: 'txn_1',
+        accountId: 'acc_1',
+        amount: -67.00,
+        description: 'Metro Grocery Store',
+        category: 'Food & Dining',
+        date: '2024-11-15',
+        isRecurring: false
+      },
+      {
+        id: 'txn_2',
+        accountId: 'acc_1',
+        amount: -38.00,
+        description: 'Loblaws',
+        category: 'Food & Dining',
+        date: '2024-11-17',
+        isRecurring: false
+      }
+    ];
+    
+    res.json({
+      transactions: transactions.slice(offset, offset + limit),
+      total: transactions.length,
+      hasMore: offset + limit < transactions.length
+    });
+  } catch (error) {
+    console.error('Transactions fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch transactions' });
+  }
+});
+
 // Initialize database and test connection on startup
 testDatabaseConnection();
 initDatabase();
