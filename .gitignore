@@ -1,3 +1,57 @@
+# Build outputs
 build/
-.gradle/
 */build/
+.gradle/
+gradle-app.setting
+
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Local configuration
+local.properties
+.env
+
+# Node modules
+node_modules/
+npm-debug.log*
+
+# Kotlin/Native
+.konan/
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# iOS
+*.ipa
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Package files
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
