@@ -1,0 +1,58 @@
+CREATE TABLE MicroTask (
+    id TEXT NOT NULL PRIMARY KEY,
+    goalId TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    targetAmount INTEGER NOT NULL, -- Amount in cents
+    isCompleted INTEGER NOT NULL DEFAULT 0,
+    dueDate INTEGER, -- Unix timestamp (optional)
+    completedAt INTEGER, -- Unix timestamp (optional)
+    createdAt INTEGER NOT NULL,
+    FOREIGN KEY (goalId) REFERENCES FinancialGoal(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_microtask_goal_id ON MicroTask(goalId);
+CREATE INDEX idx_microtask_due_date ON MicroTask(dueDate);
+CREATE INDEX idx_microtask_completed ON MicroTask(isCompleted);
+
+selectAll:
+SELECT * FROM MicroTask;
+
+selectByGoalId:
+SELECT * FROM MicroTask WHERE goalId = ? ORDER BY dueDate ASC, createdAt ASC;
+
+selectById:
+SELECT * FROM MicroTask WHERE id = ?;
+
+selectPending:
+SELECT * FROM MicroTask WHERE goalId = ? AND isCompleted = 0 ORDER BY dueDate ASC;
+
+selectCompleted:
+SELECT * FROM MicroTask WHERE goalId = ? AND isCompleted = 1 ORDER BY completedAt DESC;
+
+selectOverdue:
+SELECT * FROM MicroTask WHERE goalId = ? AND isCompleted = 0 AND dueDate < ? ORDER BY dueDate ASC;
+
+insert:
+INSERT INTO MicroTask(
+    id, goalId, title, description, targetAmount, isCompleted, dueDate, completedAt, createdAt
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+update:
+UPDATE MicroTask SET 
+    title = ?,
+    description = ?,
+    targetAmount = ?,
+    isCompleted = ?,
+    dueDate = ?,
+    completedAt = ?
+WHERE id = ?;
+
+complete:
+UPDATE MicroTask SET isCompleted = ?, completedAt = ? WHERE id = ?;
+
+delete:
+DELETE FROM MicroTask WHERE id = ?;
+
+deleteByGoalId:
+DELETE FROM MicroTask WHERE goalId = ?;

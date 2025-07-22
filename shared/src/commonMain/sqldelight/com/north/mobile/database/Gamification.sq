@@ -1,0 +1,223 @@
+-- User gamification profile
+CREATE TABLE GamificationProfile (
+    userId TEXT NOT NULL PRIMARY KEY,
+    level INTEGER NOT NULL DEFAULT 1,
+    totalPoints INTEGER NOT NULL DEFAULT 0,
+    lastActivity INTEGER, -- Unix timestamp
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+);
+
+-- User streaks
+CREATE TABLE Streak (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL,
+    type TEXT NOT NULL, -- DAILY_CHECK_IN, BUDGET_ADHERENCE, etc.
+    currentCount INTEGER NOT NULL DEFAULT 0,
+    bestCount INTEGER NOT NULL DEFAULT 0,
+    lastUpdated INTEGER NOT NULL, -- Unix timestamp (date only)
+    isActive INTEGER NOT NULL DEFAULT 1,
+    riskLevel TEXT NOT NULL DEFAULT 'SAFE', -- SAFE, LOW_RISK, MEDIUM_RISK, HIGH_RISK, BROKEN
+    recoveryAttempts INTEGER NOT NULL DEFAULT 0,
+    lastReminderSent INTEGER, -- Unix timestamp, nullable
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+);
+
+-- User achievements
+CREATE TABLE Achievement (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL,
+    achievementType TEXT NOT NULL, -- FIRST_GOAL, SAVINGS_MILESTONE, etc.
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    badgeIcon TEXT NOT NULL,
+    category TEXT NOT NULL, -- SAVINGS, BUDGETING, GOALS, etc.
+    unlockedAt INTEGER NOT NULL, -- Unix timestamp
+    createdAt INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+);
+
+-- Points history for tracking
+CREATE TABLE PointsHistory (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL,
+    points INTEGER NOT NULL,
+    action TEXT NOT NULL, -- CHECK_BALANCE, CATEGORIZE_TRANSACTION, etc.
+    description TEXT,
+    earnedAt INTEGER NOT NULL, -- Unix timestamp
+    FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+);
+
+-- Streak recovery tracking
+CREATE TABLE StreakRecovery (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL,
+    originalStreakId TEXT NOT NULL,
+    streakType TEXT NOT NULL,
+    brokenAt INTEGER NOT NULL, -- Unix timestamp
+    recoveryStarted INTEGER NOT NULL, -- Unix timestamp
+    recoveryCompleted INTEGER, -- Unix timestamp, nullable
+    originalCount INTEGER NOT NULL,
+    isSuccessful INTEGER NOT NULL DEFAULT 0,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE
+);
+
+-- Recovery actions
+CREATE TABLE RecoveryAction (
+    id TEXT NOT NULL PRIMARY KEY,
+    recoveryId TEXT NOT NULL,
+    actionType TEXT NOT NULL,
+    completedAt INTEGER NOT NULL, -- Unix timestamp
+    pointsAwarded INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    createdAt INTEGER NOT NULL,
+    FOREIGN KEY (recoveryId) REFERENCES StreakRecovery(id) ON DELETE CASCADE
+);
+
+-- Streak reminders
+CREATE TABLE StreakReminder (
+    id TEXT NOT NULL PRIMARY KEY,
+    userId TEXT NOT NULL,
+    streakId TEXT NOT NULL,
+    streakType TEXT NOT NULL,
+    reminderType TEXT NOT NULL, -- GENTLE_NUDGE, MOTIVATION_BOOST, etc.
+    message TEXT NOT NULL,
+    scheduledFor INTEGER NOT NULL, -- Unix timestamp
+    sentAt INTEGER, -- Unix timestamp, nullable
+    isRead INTEGER NOT NULL DEFAULT 0,
+    createdAt INTEGER NOT NULL,
+    FOREIGN KEY (userId) REFERENCES User(id) ON DELETE CASCADE,
+    FOREIGN KEY (streakId) REFERENCES Streak(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_gamification_user_id ON GamificationProfile(userId);
+CREATE INDEX idx_streak_user_id ON Streak(userId);
+CREATE INDEX idx_streak_type ON Streak(type);
+CREATE INDEX idx_achievement_user_id ON Achievement(userId);
+CREATE INDEX idx_achievement_category ON Achievement(category);
+CREATE INDEX idx_points_user_id ON PointsHistory(userId);
+CREATE INDEX idx_points_earned_at ON PointsHistory(earnedAt);
+CREATE INDEX idx_streak_recovery_user_id ON StreakRecovery(userId);
+CREATE INDEX idx_recovery_action_recovery_id ON RecoveryAction(recoveryId);
+CREATE INDEX idx_streak_reminder_user_id ON StreakReminder(userId);
+CREATE INDEX idx_streak_reminder_scheduled ON StreakReminder(scheduledFor);
+
+-- Gamification Profile queries
+selectGamificationProfile:
+SELECT * FROM GamificationProfile WHERE userId = ?;
+
+insertGamificationProfile:
+INSERT INTO GamificationProfile(userId, level, totalPoints, lastActivity, createdAt, updatedAt)
+VALUES(?, ?, ?, ?, ?, ?);
+
+updateGamificationProfile:
+UPDATE GamificationProfile SET 
+    level = ?, 
+    totalPoints = ?, 
+    lastActivity = ?, 
+    updatedAt = ? 
+WHERE userId = ?;
+
+-- Streak queries
+selectStreaksByUserId:
+SELECT * FROM Streak WHERE userId = ? AND isActive = 1;
+
+selectStreakByType:
+SELECT * FROM Streak WHERE userId = ? AND type = ? AND isActive = 1;
+
+selectStreakById:
+SELECT * FROM Streak WHERE id = ?;
+
+selectAllUserStreaks:
+SELECT * FROM Streak WHERE userId = ?;
+
+insertStreak:
+INSERT INTO Streak(id, userId, type, currentCount, bestCount, lastUpdated, isActive, riskLevel, recoveryAttempts, lastReminderSent, createdAt, updatedAt)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateStreak:
+UPDATE Streak SET 
+    currentCount = ?, 
+    bestCount = ?, 
+    lastUpdated = ?, 
+    riskLevel = ?,
+    recoveryAttempts = ?,
+    lastReminderSent = ?,
+    updatedAt = ? 
+WHERE id = ?;
+
+resetStreak:
+UPDATE Streak SET currentCount = 0, updatedAt = ? WHERE id = ?;
+
+-- Achievement queries
+selectAchievementsByUserId:
+SELECT * FROM Achievement WHERE userId = ? ORDER BY unlockedAt DESC;
+
+selectAchievementByType:
+SELECT * FROM Achievement WHERE userId = ? AND achievementType = ?;
+
+insertAchievement:
+INSERT INTO Achievement(id, userId, achievementType, title, description, badgeIcon, category, unlockedAt, createdAt)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Points History queries
+selectPointsHistoryByUserId:
+SELECT * FROM PointsHistory WHERE userId = ? ORDER BY earnedAt DESC;
+
+selectRecentPointsHistory:
+SELECT * FROM PointsHistory WHERE userId = ? ORDER BY earnedAt DESC LIMIT ?;
+
+insertPointsHistory:
+INSERT INTO PointsHistory(id, userId, points, action, description, earnedAt)
+VALUES(?, ?, ?, ?, ?, ?);
+
+-- Streak Recovery queries
+selectStreakRecoveryById:
+SELECT * FROM StreakRecovery WHERE id = ?;
+
+selectActiveRecoveriesByUserId:
+SELECT * FROM StreakRecovery WHERE userId = ? AND isSuccessful = 0 AND recoveryCompleted IS NULL;
+
+selectAllRecoveriesByUserId:
+SELECT * FROM StreakRecovery WHERE userId = ? ORDER BY recoveryStarted DESC;
+
+insertStreakRecovery:
+INSERT INTO StreakRecovery(id, userId, originalStreakId, streakType, brokenAt, recoveryStarted, recoveryCompleted, originalCount, isSuccessful, createdAt, updatedAt)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateStreakRecovery:
+UPDATE StreakRecovery SET 
+    recoveryCompleted = ?,
+    isSuccessful = ?,
+    updatedAt = ?
+WHERE id = ?;
+
+-- Recovery Action queries
+selectRecoveryActionsByRecoveryId:
+SELECT * FROM RecoveryAction WHERE recoveryId = ? ORDER BY completedAt ASC;
+
+insertRecoveryAction:
+INSERT INTO RecoveryAction(id, recoveryId, actionType, completedAt, pointsAwarded, description, createdAt)
+VALUES(?, ?, ?, ?, ?, ?, ?);
+
+-- Streak Reminder queries
+selectActiveRemindersByUserId:
+SELECT * FROM StreakReminder WHERE userId = ? AND isRead = 0 AND scheduledFor <= ? ORDER BY scheduledFor ASC;
+
+selectReminderById:
+SELECT * FROM StreakReminder WHERE id = ?;
+
+insertStreakReminder:
+INSERT INTO StreakReminder(id, userId, streakId, streakType, reminderType, message, scheduledFor, sentAt, isRead, createdAt)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+updateReminderAsRead:
+UPDATE StreakReminder SET isRead = 1 WHERE id = ?;
+
+updateReminderSent:
+UPDATE StreakReminder SET sentAt = ? WHERE id = ?;

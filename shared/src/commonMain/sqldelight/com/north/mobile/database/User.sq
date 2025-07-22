@@ -1,0 +1,41 @@
+CREATE TABLE User (
+    id TEXT NOT NULL PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    firstName TEXT NOT NULL,
+    lastName TEXT NOT NULL,
+    phoneNumber TEXT,
+    dateOfBirth TEXT,
+    currency TEXT NOT NULL DEFAULT 'CAD',
+    language TEXT NOT NULL DEFAULT 'en',
+    notificationsEnabled INTEGER NOT NULL DEFAULT 1,
+    biometricAuthEnabled INTEGER NOT NULL DEFAULT 0,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+selectAll:
+SELECT * FROM User;
+
+selectById:
+SELECT * FROM User WHERE id = ?;
+
+insert:
+INSERT INTO User(id, email, firstName, lastName, phoneNumber, dateOfBirth, currency, language, notificationsEnabled, biometricAuthEnabled, createdAt, updatedAt)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+update:
+UPDATE User SET 
+    email = ?, 
+    firstName = ?, 
+    lastName = ?, 
+    phoneNumber = ?, 
+    dateOfBirth = ?, 
+    currency = ?, 
+    language = ?, 
+    notificationsEnabled = ?, 
+    biometricAuthEnabled = ?, 
+    updatedAt = ?
+WHERE id = ?;
+
+delete:
+DELETE FROM User WHERE id = ?;

@@ -1,0 +1,257 @@
+-- Privacy and PIPEDA compliance tables
+
+-- Consent records table
+CREATE TABLE consent_records (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    granted INTEGER NOT NULL DEFAULT 0,
+    timestamp INTEGER NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    version TEXT NOT NULL,
+    expiry_date INTEGER,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
+);
+
+CREATE INDEX idx_consent_records_user_id ON consent_records(user_id);
+CREATE INDEX idx_consent_records_purpose ON consent_records(purpose);
+CREATE INDEX idx_consent_records_timestamp ON consent_records(timestamp);
+
+-- Consent preferences table
+CREATE TABLE consent_preferences (
+    user_id TEXT PRIMARY KEY NOT NULL,
+    marketing_opt_in INTEGER NOT NULL DEFAULT 0,
+    analytics_opt_in INTEGER NOT NULL DEFAULT 1,
+    data_retention_period TEXT NOT NULL DEFAULT 'STANDARD',
+    updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
+);
+
+-- Data export requests table
+CREATE TABLE data_export_requests (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    format TEXT NOT NULL,
+    requested_at INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    completed_at INTEGER,
+    download_url TEXT,
+    expires_at INTEGER,
+    file_size INTEGER,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
+);
+
+CREATE INDEX idx_data_export_requests_user_id ON data_export_requests(user_id);
+CREATE INDEX idx_data_export_requests_status ON data_export_requests(status);
+
+-- Export data storage table
+CREATE TABLE export_data (
+    export_id TEXT PRIMARY KEY NOT NULL,
+    data BLOB NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
+);
+
+-- Data deletion requests table
+CREATE TABLE data_deletion_requests (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    data_types TEXT NOT NULL, -- JSON array of data types
+    reason TEXT,
+    requested_at INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    scheduled_for INTEGER NOT NULL,
+    completed_at INTEGER,
+    grace_period_ends INTEGER NOT NULL,
+    verification_required INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
+);
+
+CREATE INDEX idx_data_deletion_requests_user_id ON data_deletion_requests(user_id);
+CREATE INDEX idx_data_deletion_requests_status ON data_deletion_requests(status);
+CREATE INDEX idx_data_deletion_requests_scheduled_for ON data_deletion_requests(scheduled_for);
+
+-- Audit log table
+CREATE TABLE audit_logs (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT,
+    event_type TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    session_id TEXT,
+    details TEXT NOT NULL, -- JSON object
+    result TEXT NOT NULL,
+    risk_level TEXT NOT NULL DEFAULT 'LOW',
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') * 1000)
+);
+
+CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX idx_audit_logs_event_type ON audit_logs(event_type);
+CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp);
+CREATE INDEX idx_audit_logs_risk_level ON audit_logs(risk_level);
+
+-- Queries for consent records
+insertConsentRecord:
+INSERT INTO consent_records (id, user_id, purpose, granted, timestamp, ip_address, user_agent, version, expiry_date)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getLatestConsentsForUser:
+SELECT * FROM consent_records 
+WHERE user_id = ? 
+AND id IN (
+    SELECT id FROM consent_records cr2 
+    WHERE cr2.user_id = consent_records.user_id 
+    AND cr2.purpose = consent_records.purpose 
+    ORDER BY timestamp DESC 
+    LIMIT 1
+)
+ORDER BY timestamp DESC;
+
+getLatestConsentForPurpose:
+SELECT * FROM consent_records 
+WHERE user_id = ? AND purpose = ? 
+ORDER BY timestamp DESC 
+LIMIT 1;
+
+getConsentHistory:
+SELECT * FROM consent_records 
+WHERE user_id = ? 
+ORDER BY timestamp DESC;
+
+hasUserConsents:
+SELECT COUNT(*) > 0 FROM consent_records WHERE user_id = ?;
+
+markConsentsAsDeleted:
+UPDATE consent_records 
+SET granted = 0, version = version || '_DELETED' 
+WHERE user_id = ?;
+
+-- Queries for consent preferences
+insertOrUpdateConsentPreferences:
+INSERT OR REPLACE INTO consent_preferences (user_id, marketing_opt_in, analytics_opt_in, data_retention_period)
+VALUES (?, ?, ?, ?);
+
+getConsentPreferences:
+SELECT * FROM consent_preferences WHERE user_id = ?;
+
+-- Queries for data export requests
+insertDataExportRequest:
+INSERT INTO data_export_requests (id, user_id, format, requested_at, status, expires_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+getDataExportRequest:
+SELECT * FROM data_export_requests WHERE id = ?;
+
+updateExportStatus:
+UPDATE data_export_requests 
+SET status = ?, completed_at = CASE WHEN ? = 'COMPLETED' THEN strftime('%s', 'now') * 1000 ELSE completed_at END
+WHERE id = ?;
+
+updateExportRequest:
+UPDATE data_export_requests 
+SET status = ?, completed_at = ?, download_url = ?, file_size = ?
+WHERE id = ?;
+
+getDataExportHistory:
+SELECT * FROM data_export_requests 
+WHERE user_id = ? 
+ORDER BY requested_at DESC;
+
+-- Queries for export data
+storeExportData:
+INSERT OR REPLACE INTO export_data (export_id, data) VALUES (?, ?);
+
+getExportData:
+SELECT data FROM export_data WHERE export_id = ?;
+
+-- Queries for data deletion requests
+insertDeletionRequest:
+INSERT INTO data_deletion_requests (id, user_id, data_types, reason, requested_at, status, scheduled_for, grace_period_ends, verification_required)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getDeletionRequest:
+SELECT * FROM data_deletion_requests WHERE id = ?;
+
+updateDeletionStatus:
+UPDATE data_deletion_requests 
+SET status = ?, completed_at = CASE WHEN ? IN ('COMPLETED', 'FAILED') THEN strftime('%s', 'now') * 1000 ELSE completed_at END
+WHERE id = ?;
+
+updateDeletionRequest:
+UPDATE data_deletion_requests 
+SET status = ?, completed_at = ?, verification_required = ?
+WHERE id = ?;
+
+getDeletionHistory:
+SELECT * FROM data_deletion_requests 
+WHERE user_id = ? 
+ORDER BY requested_at DESC;
+
+-- Queries for audit logs
+insertAuditLogEntry:
+INSERT INTO audit_logs (id, user_id, event_type, timestamp, ip_address, user_agent, session_id, details, result, risk_level)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAuditLogs:
+SELECT * FROM audit_logs 
+WHERE user_id = ? 
+ORDER BY timestamp DESC;
+
+getAuditLogsByType:
+SELECT * FROM audit_logs 
+WHERE event_type = ? 
+AND timestamp >= ? 
+AND timestamp <= ?
+ORDER BY timestamp DESC;
+
+getAllAuditLogs:
+SELECT * FROM audit_logs 
+WHERE timestamp >= ? 
+AND timestamp <= ?
+ORDER BY timestamp DESC;
+
+-- Data existence checks
+hasUserProfile:
+SELECT COUNT(*) > 0 FROM User WHERE id = ?;
+
+hasUserAccounts:
+SELECT COUNT(*) > 0 FROM Account WHERE userId = ?;
+
+hasUserTransactions:
+SELECT COUNT(*) > 0 FROM TransactionEntity WHERE accountId IN (SELECT id FROM Account WHERE userId = ?);
+
+hasUserGoals:
+SELECT COUNT(*) > 0 FROM FinancialGoal WHERE userId = ?;
+
+hasUserGamification:
+SELECT COUNT(*) > 0 FROM GamificationProfile WHERE userId = ?;
+
+hasUserAnalytics:
+SELECT COUNT(*) > 0 FROM audit_logs WHERE user_id = ? AND event_type LIKE '%ANALYTICS%';
+
+hasUserAuditLogs:
+SELECT COUNT(*) > 0 FROM audit_logs WHERE user_id = ?;
+
+-- Data deletion operations
+deleteUserProfile:
+DELETE FROM User WHERE id = ?;
+
+deleteUserAccounts:
+DELETE FROM Account WHERE userId = ?;
+
+deleteUserTransactions:
+DELETE FROM TransactionEntity WHERE accountId IN (SELECT id FROM Account WHERE userId = ?);
+
+deleteUserGoals:
+DELETE FROM FinancialGoal WHERE userId = ?;
+
+deleteUserGamification:
+DELETE FROM GamificationProfile WHERE userId = ?;
+
+deleteUserAnalytics:
+DELETE FROM audit_logs WHERE user_id = ? AND event_type LIKE '%ANALYTICS%';
+
+deleteUserAuditLogs:
+DELETE FROM audit_logs 
+WHERE user_id = ? 
+AND (? = 0 OR event_type NOT IN ('CONSENT_GRANTED', 'CONSENT_WITHDRAWN', 'DATA_DELETION_REQUESTED', 'DATA_DELETION_COMPLETED'));

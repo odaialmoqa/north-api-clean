@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@drawable/widget_background">
+
+    <!-- Header with refresh button -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
+
+        <TextView
+            android:id="@+id/widget_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="North Finance"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:textColor="#1565C0" />
+
+        <ImageButton
+            android:id="@+id/widget_refresh_button"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_refresh"
+            android:contentDescription="Refresh"
+            android:scaleType="centerInside" />
+
+        <TextView
+            android:id="@+id/widget_last_updated"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Updated 2 min ago"
+            android:textSize="10sp"
+            android:textColor="#666666"
+            android:layout_marginStart="8dp" />
+
+    </LinearLayout>
+
+    <!-- Net Worth Section -->
+    <LinearLayout
+        android:id="@+id/widget_net_worth_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="16dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:padding="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Net Worth"
+            android:textSize="12sp"
+            android:textColor="#666666" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/widget_net_worth"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="$47,250"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:textColor="#1C1B1F" />
+
+            <TextView
+                android:id="@+id/widget_net_worth_change"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="+$1,200"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:textColor="#4CAF50" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Account Balances -->
+    <LinearLayout
+        android:id="@+id/widget_accounts_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp"
+        android:background="?android:attr/selectableItemBackground"
+        android:padding="8dp">
+
+        <!-- Checking Account -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginEnd="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Checking"
+                android:textSize="10sp"
+                android:textColor="#666666" />
+
+            <TextView
+                android:id="@+id/widget_checking_balance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$2,450"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#1C1B1F" />
+
+        </LinearLayout>
+
+        <!-- Savings Account -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:layout_marginStart="8dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Savings"
+                android:textSize="10sp"
+                android:textColor="#666666" />
+
+            <TextView
+                android:id="@+id/widget_savings_balance"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="$15,800"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:textColor="#1C1B1F" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Goal Progress Section -->
+    <LinearLayout
+        android:id="@+id/widget_goal_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="12dp"
+        android:visibility="visible">
+
+        <TextView
+            android:id="@+id/widget_goal_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Emergency Fund: 85%"
+            android:textSize="10sp"
+            android:textColor="#666666"
+            android:layout_marginBottom="4dp" />
+
+        <ProgressBar
+            android:id="@+id/widget_goal_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="8dp"
+            android:progress="85"
+            android:max="100"
+            android:progressTint="#4CAF50"
+            android:progressBackgroundTint="#E0E0E0" />
+
+    </LinearLayout>
+
+    <!-- Streak Section -->
+    <LinearLayout
+        android:id="@+id/widget_streak_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="?android:attr/selectableItemBackground"
+        android:padding="8dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔥"
+            android:textSize="18sp"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Current Streak"
+            android:textSize="14sp"
+            android:textColor="#666666" />
+
+        <TextView
+            android:id="@+id/widget_streak_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="12 days"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textColor="#FF9800" />
+
+    </LinearLayout>
+
+</LinearLayout>

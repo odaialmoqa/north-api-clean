@@ -1,0 +1,95 @@
+CREATE TABLE TransactionEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    accountId TEXT NOT NULL,
+    amount INTEGER NOT NULL, -- Amount in cents
+    description TEXT NOT NULL,
+    category TEXT,
+    subcategory TEXT,
+    date INTEGER NOT NULL, -- Unix timestamp
+    isRecurring INTEGER NOT NULL DEFAULT 0,
+    merchantName TEXT,
+    location TEXT,
+    isVerified INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    createdAt INTEGER NOT NULL,
+    updatedAt INTEGER NOT NULL,
+    FOREIGN KEY (accountId) REFERENCES Account(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_transaction_account_id ON TransactionEntity(accountId);
+CREATE INDEX idx_transaction_date ON TransactionEntity(date);
+CREATE INDEX idx_transaction_category ON TransactionEntity(category);
+CREATE INDEX idx_transaction_amount ON TransactionEntity(amount);
+
+selectAll:
+SELECT * FROM TransactionEntity;
+
+selectByAccountId:
+SELECT * FROM TransactionEntity WHERE accountId = ? ORDER BY date DESC;
+
+selectByDateRange:
+SELECT * FROM TransactionEntity 
+WHERE accountId = ? AND date BETWEEN ? AND ? 
+ORDER BY date DESC;
+
+selectByCategory:
+SELECT * FROM TransactionEntity 
+WHERE accountId = ? AND category = ? 
+ORDER BY date DESC;
+
+selectRecent:
+SELECT * FROM TransactionEntity 
+WHERE accountId = ? 
+ORDER BY date DESC 
+LIMIT ?;
+
+selectUnverified:
+SELECT * FROM TransactionEntity 
+WHERE accountId = ? AND isVerified = 0 
+ORDER BY date DESC;
+
+selectByAccountIdPaged:
+SELECT * FROM TransactionEntity 
+WHERE accountId = ? 
+AND (:startDate IS NULL OR date >= :startDate)
+AND (:endDate IS NULL OR date <= :endDate)
+ORDER BY date DESC 
+LIMIT :limit OFFSET :offset;
+
+insert:
+INSERT INTO TransactionEntity(
+    id, accountId, amount, description, category, subcategory, date,
+    isRecurring, merchantName, location, isVerified, notes, createdAt, updatedAt
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+update:
+UPDATE TransactionEntity SET 
+    amount = ?,
+    description = ?,
+    category = ?,
+    subcategory = ?,
+    date = ?,
+    isRecurring = ?,
+    merchantName = ?,
+    location = ?,
+    isVerified = ?,
+    notes = ?,
+    updatedAt = ?
+WHERE id = ?;
+
+updateCategory:
+UPDATE TransactionEntity SET category = ?, subcategory = ?, updatedAt = ? WHERE id = ?;
+
+markVerified:
+UPDATE TransactionEntity SET isVerified = 1, updatedAt = ? WHERE id = ?;
+
+delete:
+DELETE FROM TransactionEntity WHERE id = ?;
+
+updateRecurring:
+UPDATE TransactionEntity SET isRecurring = ?, updatedAt = ? WHERE id = ?;
+
+findDuplicates:
+SELECT * FROM TransactionEntity 
+WHERE accountId = ? AND amount = ? AND date = ? AND id != ?
+ORDER BY date DESC;
