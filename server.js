@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { Resend } = require('resend');
 
 // Only load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -13,6 +14,9 @@ if (process.env.NODE_ENV !== 'production') {
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Initialize Resend
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Database connection with detailed logging
 console.log('=== DATABASE CONNECTION DEBUG ===');
@@ -221,7 +225,11 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     // Check if user exists
     const result = await pool.query('SELECT id, email, first_name FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Email address not found' });
+      // For security, don't reveal if email exists or not
+      return res.json({
+        message: `If an account with ${email} exists, a password reset link has been sent.`,
+        success: true
+      });
     }
     
     const user = result.rows[0];
@@ -233,16 +241,72 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       { expiresIn: '1h' }
     );
     
-    // In a real application, you would:
-    // 1. Store the reset token in the database with expiration
-    // 2. Send an email with the reset link
-    // 3. The reset link would be something like: https://yourapp.com/reset-password?token=resetToken
+    // Create reset link - you'll need to replace this with your actual app URL
+    const resetLink = `https://your-app-domain.com/reset-password?token=${resetToken}`;
     
-    console.log(`Password reset requested for: ${email}`);
-    console.log(`Reset token (for testing): ${resetToken}`);
+    // Send email using Resend
+    try {
+      await resend.emails.send({
+        from: 'North App <onboarding@resend.dev>', // Using Resend's sandbox domain for testing
+        to: [email],
+        subject: 'Reset Your North Password',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <div style="background: linear-gradient(135deg, #4F46E5, #2563EB); padding: 40px 20px; text-align: center;">
+              <h1 style="color: white; margin: 0; font-size: 28px;">North</h1>
+              <p style="color: white; margin: 10px 0 0 0; opacity: 0.9;">Your Personal CFO</p>
+            </div>
+            
+            <div style="padding: 40px 20px; background: white;">
+              <h2 style="color: #1F2937; margin: 0 0 20px 0;">Reset Your Password</h2>
+              
+              <p style="color: #4B5563; line-height: 1.6; margin: 0 0 20px 0;">
+                Hi ${user.first_name},
+              </p>
+              
+              <p style="color: #4B5563; line-height: 1.6; margin: 0 0 30px 0;">
+                We received a request to reset your password for your North account. Click the button below to create a new password:
+              </p>
+              
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetLink}" 
+                   style="background: #4F46E5; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: 600; display: inline-block;">
+                  Reset Password
+                </a>
+              </div>
+              
+              <p style="color: #6B7280; font-size: 14px; line-height: 1.6; margin: 30px 0 0 0;">
+                This link will expire in 1 hour for security reasons. If you didn't request this password reset, you can safely ignore this email.
+              </p>
+              
+              <p style="color: #6B7280; font-size: 14px; line-height: 1.6; margin: 20px 0 0 0;">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <span style="word-break: break-all;">${resetLink}</span>
+              </p>
+            </div>
+            
+            <div style="background: #F9FAFB; padding: 20px; text-align: center; border-top: 1px solid #E5E7EB;">
+              <p style="color: #6B7280; font-size: 12px; margin: 0;">
+                © 2024 North App. All rights reserved.
+              </p>
+            </div>
+          </div>
+        `
+      });
+      
+      console.log(`✅ Password reset email sent to: ${email}`);
+      
+    } catch (emailError) {
+      console.error('❌ Email sending failed:', emailError);
+      
+      // If email fails, still return success for security (don't reveal email exists)
+      // But log the error for debugging
+      return res.json({
+        message: `If an account with ${email} exists, a password reset link has been sent.`,
+        success: true
+      });
+    }
     
-    // For now, we'll just return success
-    // In production, you wouldn't reveal whether the email exists or not for security
     res.json({
       message: `Password reset link sent to ${email}`,
       success: true
