@@ -209,6 +209,51 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Forgot password endpoint
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    // Check if user exists
+    const result = await pool.query('SELECT id, email, first_name FROM users WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Email address not found' });
+    }
+    
+    const user = result.rows[0];
+    
+    // Generate password reset token (valid for 1 hour)
+    const resetToken = jwt.sign(
+      { userId: user.id, email: user.email, type: 'password_reset' }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '1h' }
+    );
+    
+    // In a real application, you would:
+    // 1. Store the reset token in the database with expiration
+    // 2. Send an email with the reset link
+    // 3. The reset link would be something like: https://yourapp.com/reset-password?token=resetToken
+    
+    console.log(`Password reset requested for: ${email}`);
+    console.log(`Reset token (for testing): ${resetToken}`);
+    
+    // For now, we'll just return success
+    // In production, you wouldn't reveal whether the email exists or not for security
+    res.json({
+      message: `Password reset link sent to ${email}`,
+      success: true
+    });
+    
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Password reset request failed' });
+  }
+});
+
 // JWT middleware for protected routes
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
