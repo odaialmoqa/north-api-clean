@@ -13,12 +13,12 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 // Plaid configuration
-const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
-const PLAID_SECRET = process.env.PLAID_SECRET;
+const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID || '5fdecaa7df1def0013986738';
+const PLAID_SECRET = process.env.PLAID_SECRET || '084141a287c71fd8f75cdc71c796b1';
 const PLAID_ENV = process.env.PLAID_ENV || 'sandbox'; // sandbox, development, or production
 
 console.log('=== PLAID CONFIGURATION ===');
-console.log('PLAID_CLIENT_ID exists:', !!PLAID_CLIENT_ID);
+console.log('PLAID_CLIENT_ID:', PLAID_CLIENT_ID);
 console.log('PLAID_SECRET exists:', !!PLAID_SECRET);
 console.log('PLAID_ENV:', PLAID_ENV);
 
@@ -330,21 +330,142 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
     const { message, context, onboardingStep } = req.body;
     const userId = req.user.userId;
     
+    // Get user info for personalization
+    const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
+    const userName = userResult.rows[0]?.first_name || 'there';
+    
     // Enhanced AI CFO response based on onboarding step and context
     let aiResponse;
     
     if (onboardingStep && onboardingStep !== 'COMPLETED') {
       // Handle onboarding conversation
-      aiResponse = generateOnboardingResponse(message, onboardingStep, context);
+      aiResponse = generateOnboardingResponse(message, onboardingStep, context, userName);
     } else {
       // Handle regular AI CFO conversation
-      aiResponse = generateRegularCFOResponse(message, context, userId);
+      aiResponse = generateRegularCFOResponse(message, context, userId, userName);
     }
     
     res.json(aiResponse);
   } catch (error) {
     console.error('AI CFO chat error:', error);
     res.status(500).json({ error: 'AI CFO chat failed' });
+  }
+});
+
+// AI CFO Affordability Check - Enhanced endpoint
+app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
+  try {
+    const { amount, description, category } = req.body;
+    const userId = req.user.userId;
+    
+    // Get user info for personalization
+    const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
+    const userName = userResult.rows[0]?.first_name || 'there';
+    
+    // Mock financial analysis - in production, this would use real account data
+    const mockBudget = {
+      entertainment: { budget: 400, spent: 180, remaining: 220 },
+      dining: { budget: 300, spent: 245, remaining: 55 },
+      shopping: { budget: 200, spent: 95, remaining: 105 },
+      emergency: { current: 8500, target: 10000 }
+    };
+    
+    const canAfford = amount <= mockBudget.entertainment.remaining + mockBudget.shopping.remaining;
+    
+    const affordabilityResponse = {
+      canAfford: canAfford,
+      encouragingMessage: canAfford 
+        ? `Hey ${userName}! 🎉 Great news - you can totally afford this ${description}! You're doing such a good job managing your money.`
+        : `Hi ${userName}! 💙 I want to help you make the best decision here. While ${description} sounds nice, it might stretch your budget a bit thin this month.`,
+      impactOnGoals: {
+        emergencyFund: canAfford 
+          ? "Your emergency fund progress won't be affected - you're still on track! 🎯"
+          : "This might slow down your emergency fund progress by about a week, but we can adjust! 💪",
+        overallImpact: canAfford ? "MINIMAL" : "MODERATE"
+      },
+      alternativeOptions: canAfford ? [] : [
+        {
+          suggestion: `Wait until next month when your ${category} budget resets`,
+          reasoning: "You'll have the full budget available and won't stress about overspending!"
+        },
+        {
+          suggestion: "Look for a similar but less expensive option",
+          reasoning: "You can still enjoy what you want while staying within your comfort zone 😊"
+        }
+      ],
+      supportiveReasoning: canAfford
+        ? `Here's why I'm excited for you: You have $${mockBudget.entertainment.remaining} left in entertainment and $${mockBudget.shopping.remaining} in shopping. You're ahead on your emergency fund too! 🙌`
+        : `I'm looking out for you because you're so close to your emergency fund goal! You're at $${mockBudget.emergency.current} out of $${mockBudget.emergency.target} - that's amazing progress! 🌟`,
+      celebrationLevel: canAfford ? "ENTHUSIASTIC" : "GENTLE_PRAISE",
+      followUpQuestions: canAfford ? [
+        "Should I help you find the best deal?",
+        "Want to set up a savings plan for future purchases?",
+        "How are you feeling about your spending this month?"
+      ] : [
+        "Would you like me to suggest when you could afford this?",
+        "Want to explore some alternatives?",
+        "Should we look at adjusting your budget categories?"
+      ]
+    };
+    
+    res.json(affordabilityResponse);
+  } catch (error) {
+    console.error('AI affordability check error:', error);
+    res.status(500).json({ error: 'Affordability check failed' });
+  }
+});
+
+// AI CFO Spending Analysis
+app.post('/api/ai/spending-analysis', authenticateToken, async (req, res) => {
+  try {
+    const { category, timeframe } = req.body;
+    const userId = req.user.userId;
+    
+    // Get user info for personalization
+    const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
+    const userName = userResult.rows[0]?.first_name || 'there';
+    
+    // Mock spending analysis - in production, this would analyze real transaction data
+    const spendingAnalysis = {
+      message: `Hey ${userName}! 🕵️‍♀️ I've been analyzing your ${category} spending and I found some really interesting patterns!\n\n📊 Here's what I discovered:\n\nYou spent $127 vs your usual $85/week on groceries, but here's the cool part - that big $67 trip on the 15th included cleaning supplies and toiletries, not just food!\n\nYou're actually being super smart by stocking up on essentials. That's not overspending - that's strategic planning! 👏\n\nMystery solved! 🎉`,
+      tone: 'DETECTIVE_FRIENDLY',
+      insights: [
+        {
+          type: 'POSITIVE_TREND',
+          title: 'Smart Bulk Buying',
+          description: 'You saved money by buying household essentials in bulk',
+          impact: 'POSITIVE',
+          emoji: '🧠'
+        },
+        {
+          type: 'SPENDING_PATTERN',
+          title: 'Consistent Food Budget',
+          description: 'Your actual food spending is right on track at $85/week',
+          impact: 'NEUTRAL',
+          emoji: '📈'
+        }
+      ],
+      recommendations: [
+        {
+          title: 'Keep Up the Smart Shopping',
+          description: 'Your bulk buying strategy is working great!',
+          actionable: true,
+          emoji: '🛒'
+        }
+      ],
+      celebrationElements: [
+        {
+          type: 'EMOJI_BURST',
+          content: '🎉👏🌟',
+          intensity: 'MODERATE'
+        }
+      ]
+    };
+    
+    res.json(spendingAnalysis);
+  } catch (error) {
+    console.error('AI spending analysis error:', error);
+    res.status(500).json({ error: 'Spending analysis failed' });
   }
 });
 
