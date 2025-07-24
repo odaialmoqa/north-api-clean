@@ -44,6 +44,19 @@ fun AccountConnectionScreen(
         }
     }
     
+    // Create a callback to handle public token exchange
+    val handlePlaidLinkResult = remember {
+        { linkToken: String, onResult: (String?) -> Unit ->
+            onLaunchPlaidLink?.invoke(linkToken) { publicToken ->
+                if (publicToken != null) {
+                    // Exchange the public token via the ViewModel
+                    viewModel.exchangePublicToken(publicToken)
+                }
+                onResult(publicToken)
+            }
+        }
+    }
+    
     Scaffold(
         topBar = {
             TopAppBar(
@@ -68,7 +81,7 @@ fun AccountConnectionScreen(
                 ConnectionStep.NOT_STARTED -> {
                     ConnectionStartScreen(
                         onStartConnection = { viewModel.startAccountConnection() },
-                        onLaunchPlaidLink = onLaunchPlaidLink
+                        onLaunchPlaidLink = handlePlaidLinkResult
                     )
                 }
                 ConnectionStep.INITIALIZING -> {
@@ -106,6 +119,7 @@ fun ConnectionStartScreen(
     var isLaunchingPlaid by remember { mutableStateOf(false) }
     var plaidError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -140,15 +154,7 @@ fun ConnectionStartScreen(
         
         Spacer(modifier = Modifier.height(24.dp))
         
-        Button(
-            onClick = onStartConnection,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("Connect My Bank", fontSize = 16.sp)
-        }
+        // Primary Plaid connection button
         if (onLaunchPlaidLink != null) {
             Button(
                 onClick = {
@@ -156,20 +162,30 @@ fun ConnectionStartScreen(
                     plaidError = null
                     scope.launch {
                         try {
-                            // Simulate fetching a link token from the backend
-                            // In real code, this should be done via the ViewModel or a callback
-                            // For now, just call the callback with a placeholder
-                            onLaunchPlaidLink("link-sandbox-placeholder") { publicToken ->
+                            // First, get a link token from the backend
+                            val apiClient = com.north.mobile.data.api.ApiClient()
+                            val sessionManager = com.north.mobile.data.auth.SessionManagerImpl()
+                            val authToken = sessionManager.getAuthToken()
+                            val response = apiClient.post<com.north.mobile.data.plaid.LinkTokenResponse>(
+                                "/api/plaid/create-link-token", 
+                                emptyMap<String, Any>(),
+                                authToken
+                            )
+                            
+                            // Launch Plaid Link with the real token
+                            onLaunchPlaidLink(response.link_token) { publicToken ->
                                 isLaunchingPlaid = false
                                 if (publicToken == null) {
-                                    plaidError = "Plaid Link was cancelled."
+                                    plaidError = "Connection was cancelled or failed."
                                 } else {
-                                    // Optionally, trigger ViewModel to exchange the token here
+                                    // Success! The public token will be handled by the parent component
+                                    println("✅ Got public token: $publicToken")
                                 }
                             }
                         } catch (e: Exception) {
                             isLaunchingPlaid = false
-                            plaidError = e.message ?: "Failed to launch Plaid."
+                            plaidError = e.message ?: "Failed to initialize connection."
+                            println("❌ Failed to get link token: ${e.message}")
                         }
                     }
                 },
@@ -179,14 +195,37 @@ fun ConnectionStartScreen(
                 shape = RoundedCornerShape(12.dp),
                 enabled = !isLaunchingPlaid
             ) {
-                Text(if (isLaunchingPlaid) "Launching Plaid..." else "Connect with Plaid", fontSize = 16.sp)
+                if (isLaunchingPlaid) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Connecting...", fontSize = 16.sp)
+                } else {
+                    Text("Connect with Plaid", fontSize = 16.sp)
+                }
             }
+            
             if (plaidError != null) {
                 Text(
                     text = plaidError ?: "",
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp),
+                    textAlign = TextAlign.Center
                 )
+            }
+        } else {
+            // Fallback button if Plaid Link is not available
+            Button(
+                onClick = onStartConnection,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Connect My Bank", fontSize = 16.sp)
             }
         }
         

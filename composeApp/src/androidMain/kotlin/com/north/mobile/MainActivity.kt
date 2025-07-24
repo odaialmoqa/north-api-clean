@@ -34,7 +34,19 @@ import com.north.mobile.data.plaid.PlaidIntegrationServiceImpl
 import com.north.mobile.data.api.ApiClient
 import com.north.mobile.data.plaid.AndroidPlaidIntegrationService
 import androidx.compose.ui.platform.LocalContext
+import android.content.Intent
+import com.plaid.link.Plaid
+import com.plaid.link.PlaidHandler
+import com.plaid.link.configuration.LinkTokenConfiguration
+import com.plaid.link.result.LinkResult
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
 class MainActivity : ComponentActivity() {
+    private var plaidHandler: PlaidHandler? = null
+    private var plaidResultCallback: ((String?) -> Unit)? = null
+    
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -43,10 +55,55 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    NorthApp()
+                    NorthApp(
+                        onLaunchPlaidLink = { linkToken, onResult ->
+                            launchPlaidLink(linkToken, onResult)
+                        }
+                    )
                 }
             }
         }
+    }
+    
+    private fun launchPlaidLink(linkToken: String, onResult: (String?) -> Unit) {
+        try {
+            plaidResultCallback = onResult
+            
+            val config = LinkTokenConfiguration.Builder()
+                .token(linkToken)
+                .build()
+                
+            plaidHandler = Plaid.create(application, config)
+            plaidHandler?.open(this)
+        } catch (e: Exception) {
+            println("❌ Failed to launch Plaid Link: ${e.message}")
+            onResult(null)
+        }
+    }
+    
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        if (!Plaid.isBoundToActivity(this)) {
+            return
+        }
+        
+        val linkResult = Plaid.handleOnActivityResult(requestCode, resultCode, data)
+        when (linkResult) {
+            is LinkResult.Success -> {
+                println("✅ Plaid Link Success: ${linkResult.publicToken}")
+                plaidResultCallback?.invoke(linkResult.publicToken)
+            }
+            is LinkResult.Cancelled -> {
+                println("⚠️ Plaid Link Cancelled")
+                plaidResultCallback?.invoke(null)
+            }
+            is LinkResult.Failure -> {
+                println("❌ Plaid Link Failed: ${linkResult.error}")
+                plaidResultCallback?.invoke(null)
+            }
+        }
+        plaidResultCallback = null
     }
 }
 

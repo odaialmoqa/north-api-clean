@@ -36,30 +36,7 @@ class AccountConnectionViewModel(
                 val publicToken = linkResult.publicToken
                 if (linkResult.success && publicToken != null) {
                     // Successfully got public token, now exchange it
-                    _uiState = _uiState.copy(connectionStep = ConnectionStep.EXCHANGING_TOKEN)
-                    val connectionResult = plaidService.exchangePublicToken(publicToken)
-                    
-                    if (connectionResult.success) {
-                        // Successfully connected accounts
-                        _uiState = _uiState.copy(
-                            isConnecting = false,
-                            connectionStep = ConnectionStep.COMPLETED,
-                            connectedAccounts = connectionResult.accounts,
-                            connectionSuccess = true,
-                            connectionError = null
-                        )
-                        
-                        // Refresh the accounts list
-                        loadConnectedAccounts()
-                    } else {
-                        // Failed to exchange token
-                        _uiState = _uiState.copy(
-                            isConnecting = false,
-                            connectionStep = ConnectionStep.ERROR,
-                            connectionSuccess = false,
-                            connectionError = connectionResult.error ?: "Failed to connect account"
-                        )
-                    }
+                    exchangePublicToken(publicToken)
                 } else {
                     // Failed to get public token
                     _uiState = _uiState.copy(
@@ -76,6 +53,49 @@ class AccountConnectionViewModel(
                     connectionStep = ConnectionStep.ERROR,
                     connectionSuccess = false,
                     connectionError = e.message ?: "An unexpected error occurred"
+                )
+            }
+        }
+    }
+    
+    fun exchangePublicToken(publicToken: String) {
+        _uiState = _uiState.copy(
+            isConnecting = true,
+            connectionStep = ConnectionStep.EXCHANGING_TOKEN
+        )
+        
+        coroutineScope.launch {
+            try {
+                val connectionResult = plaidService.exchangePublicToken(publicToken)
+                
+                if (connectionResult.success) {
+                    // Successfully connected accounts
+                    _uiState = _uiState.copy(
+                        isConnecting = false,
+                        connectionStep = ConnectionStep.COMPLETED,
+                        connectedAccounts = connectionResult.accounts,
+                        connectionSuccess = true,
+                        connectionError = null
+                    )
+                    
+                    // Refresh the accounts list
+                    loadConnectedAccounts()
+                } else {
+                    // Failed to exchange token
+                    _uiState = _uiState.copy(
+                        isConnecting = false,
+                        connectionStep = ConnectionStep.ERROR,
+                        connectionSuccess = false,
+                        connectionError = connectionResult.error ?: "Failed to connect account"
+                    )
+                }
+            } catch (e: Exception) {
+                // Handle any exceptions
+                _uiState = _uiState.copy(
+                    isConnecting = false,
+                    connectionStep = ConnectionStep.ERROR,
+                    connectionSuccess = false,
+                    connectionError = e.message ?: "Failed to exchange token: ${e.message}"
                 )
             }
         }
