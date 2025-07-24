@@ -170,6 +170,12 @@ fun ConnectionStartScreen(
                             val apiClient = com.north.mobile.data.api.ApiClient()
                             val sessionManager = com.north.mobile.data.auth.SessionManagerImpl()
                             val authToken = sessionManager.getAuthToken()
+                            println("🔑 Auth token for link token request: ${authToken?.take(20)}...")
+                            
+                            if (authToken == null) {
+                                throw Exception("User not authenticated - no auth token available")
+                            }
+                            
                             val response = apiClient.post<com.north.mobile.data.plaid.LinkTokenResponse>(
                                 "/api/plaid/create-link-token", 
                                 emptyMap<String, Any>(),

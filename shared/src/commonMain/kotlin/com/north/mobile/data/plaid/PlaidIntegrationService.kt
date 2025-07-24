@@ -93,11 +93,15 @@ class PlaidIntegrationServiceImpl(
     override suspend fun exchangePublicToken(publicToken: String): SimpleAccountConnectionResult {
         return try {
             val token = getAuthToken() ?: throw Exception("No auth token available")
+            println("🔑 Auth token for exchange request: ${token.take(20)}...")
+            println("📡 Exchanging public token: ${publicToken.take(20)}...")
+            
             val response = apiClient.post<ExchangeTokenResponse>(
                 "/api/plaid/exchange-public-token",
                 mapOf("public_token" to publicToken),
                 token
             )
+            println("📡 Exchange response: success=${response.success}")
             
             if (response.success) {
                 val accounts = response.accounts.map { account ->
