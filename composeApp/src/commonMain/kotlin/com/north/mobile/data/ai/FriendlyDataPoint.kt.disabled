@@ -1,0 +1,27 @@
+package com.north.mobile.data.ai
+
+/**
+ * Represents a data point that's been made more human-friendly
+ */
+data class FriendlyDataPoint(
+    val id: String,
+    val title: String,
+    val value: String,
+    val description: String,
+    val icon: String,
+    val category: String,
+    val trend: DataTrend = DataTrend.NEUTRAL,
+    val isPositive: Boolean = true,
+    val relatedInsights: List<String> = emptyList()
+)
+
+/**
+ * Represents the trend of a data point
+ */
+enum class DataTrend {
+    UP,
+    DOWN,
+    NEUTRAL,
+    SIGNIFICANT_UP,
+    SIGNIFICANT_DOWN
+}

@@ -1,0 +1,180 @@
+package com.north.mobile.ui.chat.model
+
+import com.north.mobile.data.ai.*
+// Using String for timestamps to avoid kotlinx.datetime dependency for now
+
+/**
+ * Chat message in the conversation
+ */
+data class ChatMessage(
+    val id: String,
+    val content: String,
+    val type: MessageType,
+    val timestamp: String = System.currentTimeMillis().toString(),
+    val supportingData: List<FriendlyDataPoint> = emptyList(),
+    val recommendations: List<FriendlyRecommendation> = emptyList(),
+    val celebrationElements: List<CelebrationElement> = emptyList(),
+    val emojis: List<String> = emptyList(),
+    val tone: ConversationTone = ConversationTone.WARM_FRIENDLY,
+    val isTyping: Boolean = false
+)
+
+/**
+ * Type of message in the chat
+ */
+enum class MessageType {
+    USER,
+    AI,
+    SYSTEM,
+    AI_INSIGHT,        // Financial insights with data
+    AI_GOAL_CREATED,   // When AI creates a new goal
+    AI_CELEBRATION,    // Achievement celebrations
+    AI_RECOMMENDATION  // Actionable recommendations
+}
+
+/**
+ * Current state of the chat interface
+ */
+data class ChatState(
+    val messages: List<ChatMessage> = emptyList(),
+    val currentInput: String = "",
+    val isLoading: Boolean = false,
+    val conversationStarters: List<ConversationStarter> = emptyList(),
+    val userName: String = "Friend",
+    val showConversationStarters: Boolean = true,
+    val error: String? = null
+)
+
+/**
+ * Context for the current conversation
+ */
+data class ConversationContext(
+    val userId: String = "",
+    val userName: String = "Friend",
+    val lastTopics: List<String> = emptyList(),
+    val recentQueries: List<String> = emptyList(),
+    val conversationHistory: List<String> = emptyList()
+)
+
+/**
+ * Quick question suggestion for easy interaction
+ */
+data class QuickQuestion(
+    val text: String,
+    val emoji: String,
+    val category: ConversationCategory
+)
+
+// Helper functions for chat functionality
+
+/**
+ * Update conversation context with new query
+ */
+fun updateConversationContext(
+    context: ConversationContext,
+    query: String
+): ConversationContext {
+    val topics = extractTopicsFromMessage(query)
+    return context.copy(
+        lastTopics = (topics + context.lastTopics).take(5),
+        recentQueries = (listOf(query) + context.recentQueries).take(10),
+        conversationHistory = (listOf(query) + context.conversationHistory).take(20)
+    )
+}
+
+/**
+ * Extract topics from a user message
+ */
+fun extractTopicsFromMessage(message: String): List<String> {
+    val topics = mutableListOf<String>()
+    val lowerMessage = message.lowercase()
+    
+    when {
+        lowerMessage.contains("afford") || lowerMessage.contains("buy") || lowerMessage.contains("purchase") -> 
+            topics.add("affordability")
+        lowerMessage.contains("goal") || lowerMessage.contains("target") || lowerMessage.contains("save") -> 
+            topics.add("goals")
+        lowerMessage.contains("spend") || lowerMessage.contains("spent") || lowerMessage.contains("expense") -> 
+            topics.add("spending")
+        lowerMessage.contains("budget") -> 
+            topics.add("budget")
+        lowerMessage.contains("saving") || lowerMessage.contains("savings") -> 
+            topics.add("savings")
+        lowerMessage.contains("investment") || lowerMessage.contains("invest") -> 
+            topics.add("investment")
+    }
+    
+    return topics
+}
+
+/**
+ * Get default quick questions for new conversations (AI CFO onboarding focused)
+ */
+fun getDefaultQuickQuestions(): List<QuickQuestion> {
+    return listOf(
+        QuickQuestion("Tell me about your biggest financial goal right now", "🎯", ConversationCategory.GOAL_PROGRESS),
+        QuickQuestion("What's your biggest money worry?", "😰", ConversationCategory.GENERAL_ENCOURAGEMENT),
+        QuickQuestion("I want to save for something specific", "💰", ConversationCategory.SAVINGS_ADVICE),
+        QuickQuestion("Help me understand my spending better", "📊", ConversationCategory.SPENDING_INSIGHTS),
+        QuickQuestion("I want to feel more confident about finances", "💪", ConversationCategory.GENERAL_ENCOURAGEMENT),
+        QuickQuestion("Help me get better at budgeting", "📝", ConversationCategory.BUDGET_STATUS)
+    )
+}
+
+/**
+ * Get enhanced quick questions for users with connected accounts
+ */
+fun getDataDrivenQuickQuestions(): List<QuickQuestion> {
+    return listOf(
+        QuickQuestion("Show me my account balances", "💰", ConversationCategory.SPENDING_INSIGHTS),
+        QuickQuestion("Analyze my recent spending", "📊", ConversationCategory.SPENDING_INSIGHTS),
+        QuickQuestion("How much can I afford to save?", "🎯", ConversationCategory.SAVINGS_ADVICE),
+        QuickQuestion("Create goals based on my finances", "🚀", ConversationCategory.GOAL_PROGRESS),
+        QuickQuestion("Find ways to optimize my spending", "💡", ConversationCategory.SPENDING_INSIGHTS),
+        QuickQuestion("Celebrate my financial progress!", "🎉", ConversationCategory.ACHIEVEMENT_CELEBRATION)
+    )
+}
+
+/**
+ * Get contextual quick questions for goal-driven conversations
+ */
+fun getGoalDrivenQuickQuestions(): List<QuickQuestion> {
+    return listOf(
+        QuickQuestion("I want to buy a house", "🏠", ConversationCategory.GOAL_PROGRESS),
+        QuickQuestion("Save for an emergency fund", "🛡️", ConversationCategory.SAVINGS_ADVICE),
+        QuickQuestion("Plan for a vacation", "✈️", ConversationCategory.GOAL_PROGRESS),
+        QuickQuestion("Buy a car", "🚗", ConversationCategory.AFFORDABILITY_CHECK),
+        QuickQuestion("Start investing", "📈", ConversationCategory.SAVINGS_ADVICE),
+        QuickQuestion("Pay off debt", "💳", ConversationCategory.BUDGET_STATUS)
+    )
+}
+
+/**
+ * Get contextual quick questions based on conversation history
+ */
+fun getContextualQuickQuestions(
+    context: ConversationContext,
+    userFinancialContext: UserFinancialContext?
+): List<QuickQuestion> {
+    val questions = mutableListOf<QuickQuestion>()
+    
+    // Add contextual questions based on recent topics
+    if (context.lastTopics.contains("affordability")) {
+        questions.add(QuickQuestion("Check another purchase?", "🛍️", ConversationCategory.AFFORDABILITY_CHECK))
+    }
+    
+    if (context.lastTopics.contains("goals")) {
+        questions.add(QuickQuestion("Update my goals?", "🎯", ConversationCategory.GOAL_PROGRESS))
+    }
+    
+    if (context.lastTopics.contains("spending")) {
+        questions.add(QuickQuestion("More spending insights?", "📈", ConversationCategory.SPENDING_INSIGHTS))
+    }
+    
+    // Add general helpful questions if we don't have many contextual ones
+    if (questions.size < 2) {
+        questions.addAll(getDefaultQuickQuestions().take(4 - questions.size))
+    }
+    
+    return questions.take(4)
+}

@@ -1,0 +1,193 @@
+package com.north.mobile.data.repository
+
+import com.north.mobile.data.api.FinancialApiService
+import com.north.mobile.data.api.FinancialSummaryResponse
+import com.north.mobile.data.api.FinancialGoalData
+import com.north.mobile.data.api.TransactionData
+import com.north.mobile.data.api.ChatResponse
+import com.north.mobile.data.api.ChatContext
+import com.north.mobile.domain.model.*
+import com.north.mobile.data.ai.UserFinancialContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/**
+ * Repository for financial data management
+ */
+class FinancialRepository(
+    private val financialApiService: FinancialApiService,
+    private val authRepository: AuthRepository
+) {
+    
+    private val _financialSummary = MutableStateFlow<FinancialSummaryResponse?>(null)
+    val financialSummary: StateFlow<FinancialSummaryResponse?> = _financialSummary.asStateFlow()
+    
+    private val _goals = MutableStateFlow<List<FinancialGoalData>>(emptyList())
+    val goals: StateFlow<List<FinancialGoalData>> = _goals.asStateFlow()
+    
+    private val _transactions = MutableStateFlow<List<TransactionData>>(emptyList())
+    val transactions: StateFlow<List<TransactionData>> = _transactions.asStateFlow()
+    
+    /**
+     * Refresh financial summary from API
+     */
+    suspend fun refreshFinancialSummary(): Result<FinancialSummaryResponse> {
+        val token = authRepository.getCurrentToken()
+            ?: return Result.failure(Exception("Not authenticated"))
+        
+        return try {
+            val result = financialApiService.getFinancialSummary(token)
+            result.fold(
+                onSuccess = { summary ->
+                    _financialSummary.value = summary
+                    Result.success(summary)
+                },
+                onFailure = { error ->
+                    Result.failure(error)
+                }
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Refresh goals from API
+     */
+    suspend fun refreshGoals(): Result<List<FinancialGoalData>> {
+        val token = authRepository.getCurrentToken()
+            ?: return Result.failure(Exception("Not authenticated"))
+        
+        return try {
+            val result = financialApiService.getGoals(token)
+            result.fold(
+                onSuccess = { goals ->
+                    _goals.value = goals
+                    Result.success(goals)
+                },
+                onFailure = { error ->
+                    Result.failure(error)
+                }
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Refresh transactions from API
+     */
+    suspend fun refreshTransactions(limit: Int = 50, offset: Int = 0): Result<List<TransactionData>> {
+        val token = authRepository.getCurrentToken()
+            ?: return Result.failure(Exception("Not authenticated"))
+        
+        return try {
+            val result = financialApiService.getTransactions(token, limit, offset)
+            result.fold(
+                onSuccess = { transactionsResponse ->
+                    if (offset == 0) {
+                        _transactions.value = transactionsResponse.transactions
+                    } else {
+                        _transactions.value = _transactions.value + transactionsResponse.transactions
+                    }
+                    Result.success(transactionsResponse.transactions)
+                },
+                onFailure = { error ->
+                    Result.failure(error)
+                }
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Send message to AI chat
+     */
+    suspend fun sendChatMessage(
+        message: String,
+        conversationId: String? = null
+    ): Result<ChatResponse> {
+        val token = authRepository.getCurrentToken()
+            ?: return Result.failure(Exception("Not authenticated"))
+        
+        val user = authRepository.currentUser.value
+            ?: return Result.failure(Exception("User not found"))
+        
+        return try {
+            val context = ChatContext(
+                userId = user.id,
+                conversationId = conversationId,
+                previousMessages = emptyList() // TODO: Implement conversation history
+            )
+            
+            financialApiService.sendChatMessage(token, message, context)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * Get current financial context for AI
+     */
+    fun getCurrentFinancialContext(): UserFinancialContext? {
+        val user = authRepository.currentUser.value ?: return null
+        val summary = _financialSummary.value
+        val goals = _goals.value
+        val transactions = _transactions.value
+        
+        return UserFinancialContext(
+            accounts = summary?.accounts?.map { accountData ->
+                Account(
+                    id = accountData.id,
+                    name = accountData.name,
+                    type = AccountType.valueOf(accountData.type.uppercase()),
+                    balance = Money(accountData.balance, Currency.CAD),
+                    isActive = true
+                )
+            } ?: emptyList(),
+            recentTransactions = transactions.map { txnData ->
+                Transaction(
+                    id = txnData.id,
+                    accountId = txnData.accountId,
+                    amount = Money(txnData.amount, Currency.CAD),
+                    description = txnData.description,
+                    category = Category(txnData.category, txnData.category),
+                    date = kotlinx.datetime.LocalDate.parse(txnData.date),
+                    isRecurring = txnData.isRecurring
+                )
+            },
+            goals = goals.map { goalData ->
+                FinancialGoal(
+                    id = goalData.id,
+                    userId = goalData.userId,
+                    title = goalData.title,
+                    targetAmount = Money(goalData.targetAmount, Currency.CAD),
+                    currentAmount = Money(goalData.currentAmount, Currency.CAD),
+                    targetDate = kotlinx.datetime.LocalDate.parse(goalData.targetDate),
+                    priority = Priority.valueOf(goalData.priority.uppercase()),
+                    isActive = true
+                )
+            },
+            budgets = emptyList(), // TODO: Add budget support
+            userPreferences = user.preferences ?: UserPreferences(),
+            userName = user.displayName,
+            recentAchievements = emptyList() // TODO: Add achievements
+        )
+    }
+    
+    /**
+     * Refresh all financial data
+     */
+    suspend fun refreshAllData(): Result<Unit> {
+        return try {
+            refreshFinancialSummary()
+            refreshGoals()
+            refreshTransactions()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}

@@ -1,0 +1,97 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.domain.model.*
+import com.north.mobile.data.analytics.*
+import kotlinx.datetime.LocalDate
+
+/**
+ * North AI friendly conversational interface for warm, caring financial assistance
+ * Provides natural language processing with a supportive, friend-like personality
+ */
+interface FriendlyNorthAIService {
+    
+    /**
+     * Process a user's query with friendly, caring responses
+     * @param query The user's question or request
+     * @param context Current user financial context
+     * @return Friendly AI response with warm, supportive messaging
+     */
+    suspend fun processUserQuery(
+        query: String, 
+        context: UserFinancialContext
+    ): Result<FriendlyAIResponse>
+    
+    /**
+     * Generate personalized insights with celebratory and enthusiastic tone
+     * @param context User's financial context
+     * @return List of friendly, encouraging insights
+     */
+    suspend fun generatePersonalizedInsights(
+        context: UserFinancialContext
+    ): Result<List<FriendlyInsight>>
+    
+    /**
+     * Analyze spending patterns with supportive, non-judgmental messaging
+     * @param category Spending category to analyze
+     * @param timeframe Date range for analysis
+     * @param context User's financial context
+     * @return Friendly spending pattern analysis
+     */
+    suspend fun analyzeSpendingPattern(
+        category: String,
+        timeframe: DateRange,
+        context: UserFinancialContext
+    ): Result<FriendlySpendingAnalysis>
+    
+    /**
+     * Check affordability with encouraging and supportive messaging
+     * @param expense Details of the requested expense
+     * @param context User's financial context
+     * @return Friendly affordability analysis with encouraging guidance
+     */
+    suspend fun checkAffordability(
+        expense: ExpenseRequest,
+        context: UserFinancialContext
+    ): Result<FriendlyAffordabilityResult>
+    
+    /**
+     * Explain transactions with engaging financial detective stories
+     * @param transactionId ID of the transaction to explain
+     * @param context User's financial context
+     * @return Engaging, story-like transaction explanation
+     */
+    suspend fun explainTransaction(
+        transactionId: String,
+        context: UserFinancialContext
+    ): Result<FriendlyTransactionExplanation>
+    
+    /**
+     * Suggest optimizations with positive, motivating language
+     * @param context User's financial context
+     * @return List of friendly optimization suggestions
+     */
+    suspend fun suggestOptimizations(
+        context: UserFinancialContext
+    ): Result<List<FriendlyOptimizationSuggestion>>
+    
+    /**
+     * Generate natural conversation starters for chat initiation
+     * @param context User's financial context
+     * @return List of personalized conversation starters
+     */
+    suspend fun generateConversationStarters(
+        context: UserFinancialContext
+    ): Result<List<ConversationStarter>>
+    
+    /**
+     * Celebrate achievements with enthusiastic, genuine responses
+     * @param achievement The achievement to celebrate
+     * @param context User's financial context
+     * @return Enthusiastic celebration message
+     */
+    suspend fun celebrateAchievement(
+        achievement: Achievement,
+        context: UserFinancialContext
+    ): Result<CelebrationMessage>
+}
+

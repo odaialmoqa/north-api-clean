@@ -19,5 +19,4 @@ dependencyResolutionManagement {
 }
 
 include(":composeApp")
-// Temporarily exclude shared module to avoid compilation errors
-// include(":shared")
+include(":shared")

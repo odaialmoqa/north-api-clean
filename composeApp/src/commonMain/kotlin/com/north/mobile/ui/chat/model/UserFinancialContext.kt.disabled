@@ -1,0 +1,54 @@
+package com.north.mobile.ui.chat.model
+
+/**
+ * Represents the user's financial context for personalized conversations
+ */
+data class UserFinancialContext(
+    val userId: String,
+    val hasConnectedAccounts: Boolean = false,
+    val hasActiveGoals: Boolean = false,
+    val hasRecentTransactions: Boolean = false,
+    val financialGoals: List<FinancialGoal> = emptyList(),
+    val recentSpending: Map<String, Double> = emptyMap(),
+    val accountBalances: Map<String, Double> = emptyMap(),
+    val riskTolerance: RiskTolerance = RiskTolerance.MODERATE,
+    val financialConfidence: Int = 5 // 1-10 scale
+)
+
+/**
+ * Represents a financial goal
+ */
+data class FinancialGoal(
+    val id: String,
+    val name: String,
+    val targetAmount: Double,
+    val currentAmount: Double = 0.0,
+    val targetDate: String,
+    val category: GoalCategory,
+    val isActive: Boolean = true
+)
+
+/**
+ * Categories for financial goals
+ *//**
+ * Categories for financial goals
+ */
+enum class GoalCategory {
+    EMERGENCY_FUND,
+    RETIREMENT,
+    HOME_DOWN_PAYMENT,
+    VACATION,
+    EDUCATION,
+    DEBT_PAYOFF,
+    INVESTMENT,
+    OTHER
+}
+
+/**
+ * User's risk tolerance level
+ */
+enum class RiskTolerance {
+    CONSERVATIVE,
+    MODERATE,
+    AGGRESSIVE
+}

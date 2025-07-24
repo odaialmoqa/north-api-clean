@@ -1,0 +1,42 @@
+package com.north.mobile.ui.chat.model
+
+import com.north.mobile.ui.chat.model.ChatMessage
+
+/**
+ * Extension properties for ChatMessage to provide additional UI-related functionality
+ */
+
+// Get an emoji based on message type or content
+val ChatMessage.emoji: String
+    get() = when (type) {
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI -> "🤖"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.USER -> "👤"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.SYSTEM -> "ℹ️"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_INSIGHT -> "💡"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_GOAL_CREATED -> "🎯"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_CELEBRATION -> "🎉"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_RECOMMENDATION -> "💡"
+        else -> ""
+    }
+
+// Get a friendly description for the message
+val ChatMessage.friendlyDescription: String
+    get() = when (type) {
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI -> "AI Assistant"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.USER -> "You"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.SYSTEM -> "System"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_INSIGHT -> "Here's an insight about your finances:"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_GOAL_CREATED -> "I've created a new goal for you:"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_CELEBRATION -> "Achievement Unlocked!"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_RECOMMENDATION -> "Here's a recommendation for you:"
+        else -> ""
+    }
+
+// Get a motivational reason for the message (used for celebrations and recommendations)
+val ChatMessage.motivationalReason: String
+    get() = when (type) {
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_CELEBRATION -> "Great job on your progress!"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_RECOMMENDATION -> "Here's a suggestion to help you reach your goals!"
+        is com.north.mobile.ui.chat.model.ChatMessage.MessageType.AI_GOAL_CREATED -> "You're one step closer to your financial goals!"
+        else -> ""
+    }

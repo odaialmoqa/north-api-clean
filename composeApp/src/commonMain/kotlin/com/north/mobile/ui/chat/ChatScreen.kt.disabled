@@ -1,0 +1,1256 @@
+package com.north.mobile.ui.chat
+
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.north.mobile.ui.chat.model.*
+import com.north.mobile.data.ai.*
+import kotlinx.coroutines.delay
+
+/**
+ * Main chat screen with AI Personal CFO
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class, ExperimentalFoundationApi::class)
+@Composable
+fun ChatScreen(
+    state: ChatState = ChatState(),
+    onSendMessage: (String) -> Unit = {},
+    onQuickQuestionTap: (QuickQuestion) -> Unit = {},
+    onBack: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    val listState = rememberLazyListState()
+    
+    // Auto-scroll to bottom when new messages arrive
+    LaunchedEffect(state.messages.size) {
+        if (state.messages.isNotEmpty()) {
+            delay(100) // Small delay to ensure layout is complete
+            listState.animateScrollToItem(state.messages.size - 1)
+        }
+    }
+    
+    Scaffold(
+        topBar = {
+            FriendlyTopBar(
+                userName = state.userName,
+                onBack = onBack
+            )
+        },
+        bottomBar = {
+            ChatInputBar(
+                currentInput = state.currentInput,
+                isLoading = state.isLoading,
+                onSendMessage = { message ->
+                    onSendMessage(message)
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Welcome message for new conversations (only show if no messages yet)
+                if (state.messages.isEmpty()) {
+                    item {
+                        WelcomeMessage(userName = state.userName)
+                    }
+                    
+                    // Show conversation starters after welcome message
+                    if (state.showConversationStarters) {
+                        item {
+                            ConversationStarters(
+                                starters = state.conversationStarters.ifEmpty { 
+                                    getDefaultQuickQuestions().map { 
+                                        ConversationStarter(
+                                            text = it.text,
+                                            category = it.category,
+                                            personalizedContext = "",
+                                            tone = ConversationTone.WARM_FRIENDLY,
+                                            emoji = it.emoji
+                                        )
+                                    }
+                                },
+                                onStarterTap = { starter ->
+                                    onQuickQuestionTap(
+                                        QuickQuestion(
+                                            text = starter.text,
+                                            emoji = starter.emoji,
+                                            category = starter.category
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+                
+                // Chat messages
+                items(state.messages) { message ->
+                    ChatMessageBubble(
+                        message = message,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                
+                // Loading indicator when AI is typing
+                if (state.isLoading) {
+                    item {
+                        TypingIndicator()
+                    }
+                }
+                
+                // Error message if any
+                state.error?.let { error ->
+                    item {
+                        ErrorMessage(
+                            error = error,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Friendly top bar with heart icon and warm colors
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FriendlyTopBar(
+    userName: String,
+    onBack: () -> Unit
+) {
+    TopAppBar(
+        title = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Heart icon instead of robot
+                Text(
+                    text = "💝",
+                    fontSize = 24.sp
+                )
+                Column {
+                    Text(
+                        text = "Your Personal CFO",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Here to help you succeed! ✨",
+                        fontSize = 12.sp,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+            }
+        },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Text(
+                    text = "←",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color(0xFF6366F1), // Warm purple-blue
+            titleContentColor = Color.White,
+            navigationIconContentColor = Color.White
+        )
+    )
+}
+
+/**
+ * Enhanced AI CFO welcome message with onboarding introduction
+ */
+@Composable
+private fun WelcomeMessage(
+    userName: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Main welcome card
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = Color(0xFF6366F1).copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(20.dp)
+                )
+        ) {
+            Row(
+                modifier = Modifier.padding(20.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Friendly avatar with animation
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Color(0xFF6366F1).copy(alpha = 0.1f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "💝",
+                        fontSize = 24.sp
+                    )
+                }
+                
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Hey there, $userName! 👋",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "I'm so excited to be your personal CFO! Think of me as that supportive friend who's always in your corner, helping you make smart money decisions and cheering you on every step of the way. 🌟",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 22.sp
+                    )
+                    Text(
+                        text = "I'd love to get to know you better so I can create a personalized financial plan that actually fits YOUR life. No boring forms - just a friendly chat! 😊",
+                        fontSize = 16.sp,
+                        color = Color(0xFF10B981),
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 22.sp
+                    )
+                }
+            }
+        }
+        
+        // Onboarding introduction card with progress indicator
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF10B981).copy(alpha = 0.08f)
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "🚀",
+                        fontSize = 20.sp
+                    )
+                    Text(
+                        text = "Let's create your personalized plan!",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                
+                // Onboarding progress indicator
+                OnboardingProgressIndicator(
+                    currentStep = 1,
+                    totalSteps = 6,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Text(
+                    text = "What brings you here today? Are you looking to save for something special, get better at budgeting, or maybe just want to feel more confident about your finances?",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 20.sp
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Onboarding progress indicator showing current step
+ */
+@Composable
+private fun OnboardingProgressIndicator(
+    currentStep: Int,
+    totalSteps: Int,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Step $currentStep of $totalSteps",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF10B981)
+            )
+            Text(
+                text = "${(currentStep.toFloat() / totalSteps * 100).toInt()}% complete",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        
+        // Progress bar
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .background(
+                    color = Color(0xFF10B981).copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(2.dp)
+                )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(currentStep.toFloat() / totalSteps)
+                    .fillMaxHeight()
+                    .background(
+                        color = Color(0xFF10B981),
+                        shape = RoundedCornerShape(2.dp)
+                    )
+            )
+        }
+    }
+}
+
+/**
+ * Conversation starter buttons that feel natural and inviting
+ */
+@Composable
+private fun ConversationStarters(
+    starters: List<ConversationStarter>,
+    onStarterTap: (ConversationStarter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "💭 What would you like to chat about?",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(horizontal = 4.dp)
+        )
+        
+        starters.forEach { starter ->
+            ConversationStarterButton(
+                starter = starter,
+                onClick = { onStarterTap(starter) }
+            )
+        }
+    }
+}
+
+/**
+ * Individual conversation starter button with friendly design
+ */
+@Composable
+private fun ConversationStarterButton(
+    starter: ConversationStarter,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable { onClick() }
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = starter.emoji,
+                fontSize = 24.sp
+            )
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = starter.text,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (starter.personalizedContext.isNotEmpty()) {
+                    Text(
+                        text = starter.personalizedContext,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Text(
+                text = "→",
+                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+/**
+ * Chat message bubble with friendly visual design
+ */
+@Composable
+private fun ChatMessageBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    when (message.type) {
+        MessageType.USER -> UserMessageBubble(message, modifier)
+        MessageType.AI -> AIMessageBubble(message, modifier)
+        MessageType.AI_INSIGHT -> FinancialInsightBubble(message, modifier)
+        MessageType.AI_GOAL_CREATED -> GoalCreatedBubble(message, modifier)
+        MessageType.AI_CELEBRATION -> CelebrationBubble(message, modifier)
+        MessageType.AI_RECOMMENDATION -> RecommendationBubble(message, modifier)
+        MessageType.SYSTEM -> SystemMessageBubble(message, modifier)
+    }
+}
+
+/**
+ * User message bubble (right-aligned, rounded)
+ */
+@Composable
+private fun UserMessageBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.End
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .background(
+                    color = Color(0xFF6366F1),
+                    shape = RoundedCornerShape(20.dp, 20.dp, 4.dp, 20.dp)
+                )
+        ) {
+            Text(
+                text = message.content,
+                fontSize = 16.sp,
+                color = Color.White,
+                modifier = Modifier.padding(16.dp),
+                lineHeight = 22.sp
+            )
+        }
+    }
+}
+
+/**
+ * AI message bubble with celebratory elements and supportive design
+ */
+@Composable
+private fun AIMessageBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .background(
+                    color = when (message.tone) {
+                        ConversationTone.CELEBRATORY, ConversationTone.EXCITED -> 
+                            Color(0xFF10B981).copy(alpha = 0.1f)
+                        ConversationTone.ENCOURAGING, ConversationTone.ENTHUSIASTIC -> 
+                            Color(0xFF6366F1).copy(alpha = 0.08f)
+                        else -> MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+                )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Main message with emojis
+                Text(
+                    text = message.content + if (message.emojis.isNotEmpty()) " ${message.emojis.joinToString(" ")}" else "",
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 22.sp
+                )
+                
+                // Supporting data points
+                if (message.supportingData.isNotEmpty()) {
+                    SupportingDataSection(message.supportingData)
+                }
+                
+                // Recommendations
+                if (message.recommendations.isNotEmpty()) {
+                    RecommendationsSection(message.recommendations)
+                }
+                
+                // Celebration elements
+                if (message.celebrationElements.isNotEmpty()) {
+                    CelebrationSection(message.celebrationElements)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * System message bubble for notifications
+ */
+@Composable
+private fun SystemMessageBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(
+                text = message.content,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(12.dp),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+/**
+ * Supporting data section with friendly explanations
+ */
+@Composable
+private fun SupportingDataSection(
+    supportingData: List<FriendlyDataPoint>,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White.copy(alpha = 0.7f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            supportingData.forEach { dataPoint ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = dataPoint.emoji,
+                        fontSize = 16.sp
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "${dataPoint.title}: ${dataPoint.value}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+}
+
+/**
+ * Recommendations section with encouraging language
+ */
+@Composable
+private fun RecommendationsSection(
+    recommendations: List<FriendlyRecommendation>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "💡 Here's what I suggest:",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        
+        recommendations.forEach { recommendation ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFF6366F1).copy(alpha = 0.05f)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = recommendation.emoji,
+                        fontSize = 16.sp
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = recommendation.title,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = recommendation.friendlyDescription,
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (recommendation.motivationalReason.isNotEmpty()) {
+                            Text(
+                                text = recommendation.motivationalReason,
+                                fontSize = 12.sp,
+                                color = Color(0xFF10B981),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Celebration section with confetti and positive reinforcement
+ */
+@Composable
+fun CelebrationSection(
+    celebrationElements: List<CelebrationElement>,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFEF3C7) // Light yellow celebration background
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            celebrationElements.forEach { element ->
+                when (element.type) {
+                    CelebrationType.GOAL_ACHIEVED -> {
+                        Text(
+                            text = "${element.emoji} ${element.message}",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFD97706), // Warm orange
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    CelebrationType.STREAK -> {
+                        Text(
+                            text = "🔥 ${element.message} ${element.emoji}",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF059669), // Green
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    CelebrationType.MILESTONE -> {
+                        Text(
+                            text = "🏆 ${element.message} ${element.emoji}",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF7C3AED), // Purple
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    else -> {
+                        Text(
+                            text = "${element.emoji} ${element.message}",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Typing indicator when AI is responding
+ */
+@Composable
+private fun TypingIndicator(
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Card(
+            modifier = Modifier.width(80.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            ),
+            shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                repeat(3) { index ->
+                    val infiniteTransition = rememberInfiniteTransition(label = "typing")
+                    val alpha by infiniteTransition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(600, delayMillis = index * 200),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "dot_alpha"
+                    )
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+                                RoundedCornerShape(4.dp)
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Error message display
+ */
+@Composable
+private fun ErrorMessage(
+    error: String,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFEE2E2) // Light red background
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "😔",
+                fontSize = 20.sp
+            )
+            Column {
+                Text(
+                    text = "Oops! Something went wrong",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFDC2626)
+                )
+                Text(
+                    text = error,
+                    fontSize = 13.sp,
+                    color = Color(0xFFDC2626).copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Chat input bar with supportive message formatting
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ChatInputBar(
+    currentInput: String,
+    isLoading: Boolean,
+    onSendMessage: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var inputText by remember { mutableStateOf(currentInput) }
+    
+    LaunchedEffect(currentInput) {
+        inputText = currentInput
+    }
+    
+    Box(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+            )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            OutlinedTextField(
+                value = inputText,
+                onValueChange = { inputText = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { 
+                    Text(
+                        "Ask me anything about your finances... 💬",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    ) 
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = Color(0xFF6366F1),
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+                ),
+                shape = RoundedCornerShape(24.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (inputText.isNotBlank() && !isLoading) {
+                            onSendMessage(inputText.trim())
+                            inputText = ""
+                        }
+                    }
+                ),
+                enabled = !isLoading,
+                maxLines = 4
+            )
+            
+            Button(
+                onClick = {
+                    if (inputText.isNotBlank() && !isLoading) {
+                        onSendMessage(inputText.trim())
+                        inputText = ""
+                    }
+                },
+                enabled = inputText.isNotBlank() && !isLoading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF6366F1),
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.size(56.dp),
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "💬",
+                        fontSize = 20.sp
+                    )
+                }
+            }
+        }
+    }
+}
+/**
+ 
+* Financial insight bubble with data visualization
+ */
+@Composable
+private fun FinancialInsightBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(0.9f),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF10B981).copy(alpha = 0.1f)
+            ),
+            shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Header with insight icon
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "💡",
+                        fontSize = 20.sp
+                    )
+                    Text(
+                        text = "Financial Insight",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF10B981),
+                        fontSize = 16.sp
+                    )
+                }
+                
+                // Main message
+                Text(
+                    text = message.content,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 22.sp
+                )
+                
+                // Supporting data with enhanced visualization
+                if (message.supportingData.isNotEmpty()) {
+                    SupportingDataSection(message.supportingData)
+                }
+                
+                // Recommendations
+                if (message.recommendations.isNotEmpty()) {
+                    RecommendationsSection(message.recommendations)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Goal created bubble with celebration
+ */
+@Composable
+private fun GoalCreatedBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(0.9f),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF6366F1).copy(alpha = 0.1f)
+            ),
+            shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Header with goal icon
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "🎯",
+                        fontSize = 20.sp
+                    )
+                    Text(
+                        text = "New Goal Created!",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF6366F1),
+                        fontSize = 16.sp
+                    )
+                }
+                
+                // Main message
+                Text(
+                    text = message.content,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 22.sp
+                )
+                
+                // Goal details
+                if (message.recommendations.isNotEmpty()) {
+                    message.recommendations.forEach { goal ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color.White.copy(alpha = 0.8f)
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                Text(
+                                    text = goal.emoji,
+                                    fontSize = 24.sp
+                                )
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text(
+                                        text = goal.title,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = goal.friendlyDescription,
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                    if (goal.motivationalReason.isNotEmpty()) {
+                                        Text(
+                                            text = goal.motivationalReason,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFF10B981),
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Celebration elements
+                if (message.celebrationElements.isNotEmpty()) {
+                    CelebrationSection(message.celebrationElements)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Celebration bubble for achievements
+ */
+@Composable
+private fun CelebrationBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(0.9f),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFFFEF3C7) // Light yellow celebration
+            ),
+            shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Celebration header
+                Text(
+                    text = "🎉 Celebration Time! 🎉",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFD97706),
+                    textAlign = TextAlign.Center
+                )
+                
+                // Main celebration message
+                Text(
+                    text = message.content,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 22.sp,
+                    textAlign = TextAlign.Center
+                )
+                
+                // Celebration elements
+                if (message.celebrationElements.isNotEmpty()) {
+                    CelebrationSection(message.celebrationElements)
+                }
+                
+                // Supporting data for achievements
+                if (message.supportingData.isNotEmpty()) {
+                    SupportingDataSection(message.supportingData)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Recommendation bubble with actionable suggestions
+ */
+@Composable
+private fun RecommendationBubble(
+    message: ChatMessage,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(0.9f),
+            colors = CardDefaults.cardColors(
+                containerColor = Color(0xFF8B5CF6).copy(alpha = 0.1f)
+            ),
+            shape = RoundedCornerShape(20.dp, 20.dp, 20.dp, 4.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Header with recommendation icon
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "💡",
+                        fontSize = 20.sp
+                    )
+                    Text(
+                        text = "Smart Recommendation",
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF8B5CF6),
+                        fontSize = 16.sp
+                    )
+                }
+                
+                // Main message
+                Text(
+                    text = message.content,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 22.sp
+                )
+                
+                // Recommendations with enhanced styling
+                if (message.recommendations.isNotEmpty()) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        message.recommendations.forEach { recommendation ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF8B5CF6).copy(alpha = 0.05f)
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.Top
+                                ) {
+                                    Text(
+                                        text = recommendation.emoji,
+                                        fontSize = 20.sp
+                                    )
+                                    Column(
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Text(
+                                            text = recommendation.title,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = recommendation.friendlyDescription,
+                                            fontSize = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(top = 2.dp)
+                                        )
+                                        if (recommendation.motivationalReason.isNotEmpty()) {
+                                            Text(
+                                                text = "💪 ${recommendation.motivationalReason}",
+                                                fontSize = 12.sp,
+                                                color = Color(0xFF10B981),
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

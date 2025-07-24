@@ -1,0 +1,450 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.data.finance.FinancialDataAnalyzer
+import com.north.mobile.data.plaid.PlaidIntegrationService
+import com.north.mobile.data.plaid.SimplePlaidAccount
+import com.north.mobile.data.plaid.SimplePlaidTransaction
+import com.north.mobile.ui.chat.model.*
+import kotlinx.coroutines.delay
+
+/**
+ * Enhanced AI CFO Service that integrates with real financial data from Plaid
+ */
+class EnhancedAICFOService(
+    private val plaidService: PlaidIntegrationService
+) : AICFOServiceInterface {
+    
+    private val baseAICFOService = AICFOChatService()
+    private val financialDataAnalyzer = FinancialDataAnalyzer()
+    private val financialAdvisor = AICFOFinancialAdvisor(plaidService, financialDataAnalyzer)
+    private var connectedAccounts: List<SimplePlaidAccount> = emptyList()
+    private var recentTransactions: List<SimplePlaidTransaction> = emptyList()
+    
+    /**
+     * Initialize chat with real financial data context
+     */
+    override suspend fun initializeChat(userName: String): ChatMessage {
+        // Load user's financial data
+        loadFinancialData()
+        
+        // Get base welcome message
+        val baseMessage = baseAICFOService.initializeChat(userName)
+        
+        // Enhance with financial data context if available
+        return if (connectedAccounts.isNotEmpty()) {
+            enhanceWelcomeWithFinancialData(baseMessage, userName)
+        } else {
+            enhanceWelcomeWithPlaidPrompt(baseMessage, userName)
+        }
+    }
+    
+    /**
+     * Process message with financial data integration
+     */
+    override suspend fun processMessage(userMessage: String): ChatMessage {
+        // Refresh financial data for context
+        loadFinancialData()
+        
+        val lowerMessage = userMessage.lowercase()
+        
+        return when {
+            lowerMessage.contains("account") || lowerMessage.contains("connect") || lowerMessage.contains("bank") -> 
+                handleAccountInquiry(userMessage)
+            lowerMessage.contains("balance") || lowerMessage.contains("money") -> 
+                handleBalanceInquiry(userMessage)
+            lowerMessage.contains("spend") || lowerMessage.contains("transaction") -> 
+                handleSpendingInquiryWithData(userMessage)
+            lowerMessage.contains("goal") -> 
+                handleGoalInquiryWithData(userMessage)
+            lowerMessage.contains("save") || lowerMessage.contains("saving") -> 
+                handleSavingInquiryWithData(userMessage)
+            lowerMessage.contains("health") || lowerMessage.contains("score") || lowerMessage.contains("overview") -> 
+                handleFinancialHealthInquiry(userMessage)
+            else -> {
+                // Use financial advisor for contextual analysis
+                if (connectedAccounts.isNotEmpty()) {
+                    financialAdvisor.refreshFinancialData()
+                    financialAdvisor.analyzeUserMessage(userMessage)
+                } else {
+                    // Use base service for other conversations
+                    baseAICFOService.processMessage(userMessage)
+                }
+            }
+        }
+    }
+    
+    private suspend fun loadFinancialData() {
+        try {
+            connectedAccounts = plaidService.getAccounts("current_user")
+            
+            // Load recent transactions from all accounts
+            val allTransactions = mutableListOf<SimplePlaidTransaction>()
+            connectedAccounts.forEach { account ->
+                val result = plaidService.syncTransactions(account.id)
+                if (result.success) {
+                    allTransactions.addAll(result.transactions)
+                }
+            }
+            recentTransactions = allTransactions.sortedByDescending { it.date }.take(50)
+        } catch (e: Exception) {
+            // Handle gracefully - continue with empty data
+            connectedAccounts = emptyList()
+            recentTransactions = emptyList()
+        }
+    }
+    
+    private fun enhanceWelcomeWithFinancialData(baseMessage: ChatMessage, userName: String): ChatMessage {
+        val totalBalance = connectedAccounts.sumOf { it.balance }
+        val accountCount = connectedAccounts.size
+        
+        val enhancedContent = """
+            Hey $userName! 👋 I'm so excited to be your personal CFO! I can see you've already connected $accountCount bank account${if (accountCount > 1) "s" else ""} - that's fantastic! 🎉
+            
+            With a total balance of $${String.format("%.2f", totalBalance)} across your accounts, you're already in a great position to start optimizing your finances!
+            
+            I'd love to get to know you better so I can create a personalized financial plan that actually fits YOUR life and works with your real financial situation. No boring forms - just a friendly chat! 😊
+            
+            What brings you here today? Are you looking to save for something special, get better at budgeting, or maybe just want to feel more confident about your finances?
+        """.trimIndent()
+        
+        return baseMessage.copy(
+            content = enhancedContent,
+            supportingData = listOf(
+                FriendlyDataPoint(
+                    label = "Connected Accounts",
+                    value = "$accountCount account${if (accountCount > 1) "s" else ""}",
+                    friendlyExplanation = "Great job connecting your accounts!",
+                    encouragingContext = "This gives me real data to help you with! 🚀",
+                    emoji = "🏦"
+                ),
+                FriendlyDataPoint(
+                    label = "Total Balance",
+                    value = "$${String.format("%.2f", totalBalance)}",
+                    friendlyExplanation = "Your current financial snapshot",
+                    encouragingContext = "You're building wealth! 💪",
+                    emoji = "💰"
+                )
+            )
+        )
+    }
+    
+    private fun enhanceWelcomeWithPlaidPrompt(baseMessage: ChatMessage, userName: String): ChatMessage {
+        val enhancedContent = """
+            ${baseMessage.content}
+            
+            💡 **Pro tip**: If you connect your bank accounts, I can give you personalized advice based on your real spending patterns and balances! It's completely secure and helps me be way more helpful. 
+            
+            But no pressure - we can start chatting about your goals either way! 😊
+        """.trimIndent()
+        
+        return baseMessage.copy(
+            content = enhancedContent,
+            recommendations = listOf(
+                FriendlyRecommendation(
+                    id = "connect_accounts",
+                    title = "Connect Your Bank Accounts",
+                    friendlyDescription = "Get personalized advice based on your real financial data",
+                    motivationalReason = "I can give you much better insights when I can see your actual spending!",
+                    easyActionText = "Connect securely with Plaid",
+                    celebrationPotential = CelebrationType.PROGRESS_CHEER,
+                    supportiveContext = "Bank-level security, read-only access",
+                    emoji = "🔗"
+                )
+            )
+        )
+    }
+    
+    private suspend fun handleAccountInquiry(userMessage: String): ChatMessage {
+        delay(800) // Natural response delay
+        
+        return if (connectedAccounts.isEmpty()) {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "I'd love to help you connect your bank accounts! 🏦 It's super secure and gives me the real data I need to provide personalized advice.\n\nOnce connected, I can help you understand your spending patterns, track your goals with real numbers, and give you insights based on your actual financial situation rather than just general advice.\n\nWould you like me to help you get started with connecting an account?",
+                type = MessageType.AI,
+                tone = ConversationTone.ENCOURAGING,
+                recommendations = listOf(
+                    FriendlyRecommendation(
+                        id = "start_plaid_connection",
+                        title = "Connect Your First Account",
+                        friendlyDescription = "Securely link your bank account in just a few taps",
+                        motivationalReason = "This unlocks personalized insights just for you!",
+                        easyActionText = "Start connecting",
+                        celebrationPotential = CelebrationType.MILESTONE_CELEBRATION,
+                        supportiveContext = "Powered by Plaid - trusted by millions",
+                        emoji = "🚀"
+                    )
+                ),
+                emojis = listOf("🏦", "🔒", "✨")
+            )
+        } else {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "You've got ${connectedAccounts.size} account${if (connectedAccounts.size > 1) "s" else ""} connected - awesome! 🎉\n\nHere's what I can see:\n\n${formatAccountSummary()}\n\nEverything looks healthy! Is there something specific about your accounts you'd like to discuss?",
+                type = MessageType.AI,
+                tone = ConversationTone.SUPPORTIVE,
+                supportingData = connectedAccounts.map { account ->
+                    FriendlyDataPoint(
+                        label = account.name,
+                        value = "$${String.format("%.2f", account.balance)}",
+                        friendlyExplanation = "${account.institutionName} - ${account.type}",
+                        encouragingContext = if (account.balance > 0) "Looking good! 👍" else "We can work on this together!",
+                        emoji = when (account.type.lowercase()) {
+                            "checking" -> "💳"
+                            "savings" -> "🏦"
+                            else -> "💰"
+                        }
+                    )
+                },
+                emojis = listOf("🏦", "📊", "✅")
+            )
+        }
+    }
+    
+    private suspend fun handleBalanceInquiry(userMessage: String): ChatMessage {
+        delay(600)
+        
+        return if (connectedAccounts.isEmpty()) {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "I'd love to help you check your balances! 💰 To give you real-time balance information, I'll need you to connect your bank accounts first.\n\nOnce connected, I can show you all your balances in one place and help you understand your complete financial picture!",
+                type = MessageType.AI,
+                tone = ConversationTone.HELPFUL,
+                emojis = listOf("💰", "🔗", "📊")
+            )
+        } else {
+            val totalBalance = connectedAccounts.sumOf { it.balance }
+            val checkingBalance = connectedAccounts.filter { it.type.lowercase() == "checking" }.sumOf { it.balance }
+            val savingsBalance = connectedAccounts.filter { it.type.lowercase() == "savings" }.sumOf { it.balance }
+            
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "Here's your current financial snapshot! 📊\n\nYou're doing great - having $${String.format("%.2f", totalBalance)} across your accounts shows you're building wealth! 💪",
+                type = MessageType.AI,
+                tone = ConversationTone.ENCOURAGING,
+                supportingData = listOf(
+                    FriendlyDataPoint(
+                        label = "Total Balance",
+                        value = "$${String.format("%.2f", totalBalance)}",
+                        friendlyExplanation = "All your connected accounts combined",
+                        encouragingContext = "Your net worth is growing! 🚀",
+                        emoji = "💰"
+                    ),
+                    if (checkingBalance > 0) FriendlyDataPoint(
+                        label = "Checking Accounts",
+                        value = "$${String.format("%.2f", checkingBalance)}",
+                        friendlyExplanation = "Available for daily expenses",
+                        encouragingContext = "Good liquidity for day-to-day needs!",
+                        emoji = "💳"
+                    ) else null,
+                    if (savingsBalance > 0) FriendlyDataPoint(
+                        label = "Savings Accounts",
+                        value = "$${String.format("%.2f", savingsBalance)}",
+                        friendlyExplanation = "Money you're setting aside",
+                        encouragingContext = "Great job building your savings! 🎯",
+                        emoji = "🏦"
+                    ) else null
+                ).filterNotNull(),
+                emojis = listOf("📊", "💰", "🎉")
+            )
+        }
+    }
+    
+    private suspend fun handleSpendingInquiryWithData(userMessage: String): ChatMessage {
+        delay(1000)
+        
+        return if (recentTransactions.isEmpty()) {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "I'd love to analyze your spending patterns! 📊 To give you personalized insights, I'll need access to your transaction data.\n\nOnce you connect your accounts, I can show you exactly where your money goes and help you find opportunities to optimize without sacrificing what you love!",
+                type = MessageType.AI,
+                tone = ConversationTone.ENCOURAGING,
+                emojis = listOf("📊", "💡", "🔍")
+            )
+        } else {
+            // Refresh financial data and get insights from the financial advisor
+            financialAdvisor.refreshFinancialData()
+            financialAdvisor.getSpendingInsights()
+        }
+    }
+    
+    private suspend fun handleGoalInquiryWithData(userMessage: String): ChatMessage {
+        delay(900)
+        
+        val baseGoalResponse = baseAICFOService.processMessage(userMessage)
+        
+        // Enhance with real financial data if available
+        return if (connectedAccounts.isNotEmpty()) {
+            val totalBalance = connectedAccounts.sumOf { it.balance }
+            val monthlyIncome = estimateMonthlyIncome()
+            val monthlyExpenses = estimateMonthlyExpenses()
+            val availableForGoals = monthlyIncome - monthlyExpenses
+            
+            baseGoalResponse.copy(
+                content = baseGoalResponse.content + "\n\nBased on your current financial situation, you have about $${String.format("%.2f", availableForGoals)} available each month that could go toward your goals! 🎯",
+                supportingData = baseGoalResponse.supportingData + listOf(
+                    FriendlyDataPoint(
+                        label = "Monthly Goal Budget",
+                        value = "$${String.format("%.2f", availableForGoals)}",
+                        friendlyExplanation = "Available after your regular expenses",
+                        encouragingContext = if (availableForGoals > 0) "You have room to grow! 🚀" else "Let's find some opportunities to optimize!",
+                        emoji = "🎯"
+                    )
+                )
+            )
+        } else {
+            baseGoalResponse
+        }
+    }
+    
+    private suspend fun handleSavingInquiryWithData(userMessage: String): ChatMessage {
+        delay(800)
+        
+        val baseSavingResponse = baseAICFOService.processMessage(userMessage)
+        
+        return if (connectedAccounts.isNotEmpty()) {
+            val savingsBalance = connectedAccounts.filter { it.type.lowercase() == "savings" }.sumOf { it.balance }
+            val totalBalance = connectedAccounts.sumOf { it.balance }
+            val savingsRate = if (totalBalance > 0) (savingsBalance / totalBalance * 100) else 0.0
+            
+            baseSavingResponse.copy(
+                content = "I'm so proud of you for focusing on saving! 💰 Looking at your accounts, you currently have $${String.format("%.2f", savingsBalance)} in savings accounts!\n\n${if (savingsRate > 15) "That's ${String.format("%.1f", savingsRate)}% of your total balance in savings - you're doing amazing! 🎉" else "Let's work together to boost that savings rate even higher! 🚀"}",
+                supportingData = baseSavingResponse.supportingData + listOf(
+                    FriendlyDataPoint(
+                        label = "Current Savings",
+                        value = "$${String.format("%.2f", savingsBalance)}",
+                        friendlyExplanation = "Money you've set aside",
+                        encouragingContext = if (savingsBalance > 1000) "Great emergency fund building! 💪" else "Every dollar saved is progress! 🌟",
+                        emoji = "💰"
+                    ),
+                    FriendlyDataPoint(
+                        label = "Savings Rate",
+                        value = "${String.format("%.1f", savingsRate)}%",
+                        friendlyExplanation = "Percentage of total balance in savings",
+                        encouragingContext = if (savingsRate > 15) "Above average - fantastic! 🎉" else "Room to grow - let's optimize! 📈",
+                        emoji = "📊"
+                    )
+                )
+            )
+        } else {
+            baseSavingResponse
+        }
+    }
+    
+    private suspend fun handleFinancialHealthInquiry(userMessage: String): ChatMessage {
+        delay(1200)
+        
+        return if (connectedAccounts.isNotEmpty()) {
+            // Refresh financial data and get health overview from the financial advisor
+            financialAdvisor.refreshFinancialData()
+            financialAdvisor.getFinancialHealthOverview()
+        } else {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "I'd love to give you a comprehensive financial health analysis! 🏥 To provide accurate insights about your financial wellness, I'll need access to your account and transaction data.\n\nOnce connected, I can analyze your spending patterns, savings rate, debt levels, and give you a personalized financial health score with actionable recommendations!",
+                type = MessageType.AI,
+                tone = ConversationTone.ENCOURAGING,
+                recommendations = listOf(
+                    FriendlyRecommendation(
+                        id = "connect_for_health_analysis",
+                        title = "Connect Accounts for Health Analysis",
+                        friendlyDescription = "Get a comprehensive financial wellness report",
+                        motivationalReason = "Understanding your financial health is the first step to improvement!",
+                        easyActionText = "Connect accounts",
+                        celebrationPotential = CelebrationType.MILESTONE_CELEBRATION,
+                        supportiveContext = "Secure, read-only access to analyze your data",
+                        emoji = "🏥"
+                    )
+                ),
+                emojis = listOf("🏥", "📊", "💪")
+            )
+        }
+    }
+    
+    // Helper functions for financial analysis
+    
+    private fun formatAccountSummary(): String {
+        return connectedAccounts.joinToString("\n") { account ->
+            "• ${account.name} (${account.institutionName}): $${String.format("%.2f", account.balance)}"
+        }
+    }
+    
+    private fun analyzeSpending(): SpendingAnalysis {
+        val last30DaysTransactions = recentTransactions.take(30)
+        val totalSpent = last30DaysTransactions.filter { it.amount < 0 }.sumOf { -it.amount }
+        
+        // Categorize spending
+        val categorySpending = mutableMapOf<String, Double>()
+        last30DaysTransactions.filter { it.amount < 0 }.forEach { transaction ->
+            val category = transaction.category.firstOrNull() ?: "Other"
+            categorySpending[category] = categorySpending.getOrDefault(category, 0.0) + (-transaction.amount)
+        }
+        
+        val topCategory = categorySpending.maxByOrNull { it.value }
+        
+        return SpendingAnalysis(
+            summary = "In the last 30 days, you've spent $${String.format("%.2f", totalSpent)} across ${categorySpending.size} different categories.",
+            dataPoints = listOf(
+                FriendlyDataPoint(
+                    label = "Total Spending (30 days)",
+                    value = "$${String.format("%.2f", totalSpent)}",
+                    friendlyExplanation = "Your recent spending activity",
+                    encouragingContext = "You're keeping track - that's the first step! 👏",
+                    emoji = "💳"
+                ),
+                if (topCategory != null) FriendlyDataPoint(
+                    label = "Top Category",
+                    value = "${topCategory.key} ($${String.format("%.2f", topCategory.value)})",
+                    friendlyExplanation = "Where most of your money went",
+                    encouragingContext = if (topCategory.key.contains("Food") || topCategory.key.contains("Grocery")) "Essential spending - good priorities! 🛒" else "Let's see if we can optimize this category! 💡",
+                    emoji = "📊"
+                ) else null
+            ).filterNotNull(),
+            recommendations = if (topCategory != null && topCategory.value > totalSpent * 0.3) {
+                listOf(
+                    FriendlyRecommendation(
+                        id = "optimize_top_category",
+                        title = "Optimize ${topCategory.key} Spending",
+                        friendlyDescription = "This category is ${String.format("%.1f", topCategory.value / totalSpent * 100)}% of your spending",
+                        motivationalReason = "Small changes here could make a big impact! 🎯",
+                        easyActionText = "Show me optimization tips",
+                        celebrationPotential = CelebrationType.PROGRESS_CHEER,
+                        supportiveContext = "Every optimization is a win! 🌟",
+                        emoji = "💡"
+                    )
+                )
+            } else emptyList()
+        )
+    }
+    
+    private fun estimateMonthlyIncome(): Double {
+        // Look for positive transactions that might be income
+        val positiveTransactions = recentTransactions.filter { it.amount > 0 }
+        return if (positiveTransactions.isNotEmpty()) {
+            positiveTransactions.sumOf { it.amount } / 30 * 30 // Rough monthly estimate
+        } else {
+            0.0
+        }
+    }
+    
+    private fun estimateMonthlyExpenses(): Double {
+        val negativeTransactions = recentTransactions.filter { it.amount < 0 }
+        return if (negativeTransactions.isNotEmpty()) {
+            negativeTransactions.sumOf { -it.amount } / 30 * 30 // Rough monthly estimate
+        } else {
+            0.0
+        }
+    }
+    
+    // Delegate other methods to base service
+    override fun getConversationStarters(): List<ConversationStarter> = baseAICFOService.getConversationStarters()
+    override fun isInOnboarding(): Boolean = baseAICFOService.isInOnboarding()
+    override fun getCurrentOnboardingStep(): OnboardingStep = baseAICFOService.getCurrentOnboardingStep()
+}
+
+// Data classes for spending analysis
+data class SpendingAnalysis(
+    val summary: String,
+    val dataPoints: List<FriendlyDataPoint>,
+    val recommendations: List<FriendlyRecommendation>
+)

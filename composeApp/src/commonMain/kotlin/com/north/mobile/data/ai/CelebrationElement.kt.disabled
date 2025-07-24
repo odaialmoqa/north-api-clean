@@ -1,0 +1,37 @@
+package com.north.mobile.data.ai
+
+/**
+ * Represents an element used to celebrate user achievements
+ */
+data class CelebrationElement(
+    val type: CelebrationType,
+    val message: String,
+    val emoji: String,
+    val animationType: AnimationType = AnimationType.NONE,
+    val relatedGoal: String? = null,
+    val milestone: String? = null
+)
+
+/**
+ * Types of celebrations
+ */
+enum class CelebrationType {
+    GOAL_ACHIEVED,
+    STREAK,
+    MILESTONE,
+    POSITIVE_HABIT,
+    FINANCIAL_IMPROVEMENT,
+    CONSISTENCY
+}
+
+/**
+ * Types of animations for celebrations
+ */
+enum class AnimationType {
+    NONE,
+    CONFETTI,
+    BALLOONS,
+    FIREWORKS,
+    HEARTS,
+    STARS
+}

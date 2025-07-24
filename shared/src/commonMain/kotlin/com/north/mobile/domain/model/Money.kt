@@ -126,8 +126,6 @@ data class Money(
         return when (currency) {
             Currency.CAD -> formatCAD()
             Currency.USD -> "US" + formatCAD()
-            Currency.EUR -> "€${String.format("%.2f", dollars)}"
-            Currency.GBP -> "£${String.format("%.2f", dollars)}"
         }
     }
     
@@ -176,11 +174,9 @@ data class Money(
  * Supported currencies
  */
 @Serializable
-enum class Currency(val code: String, val symbol: String, val name: String) {
+enum class Currency(val code: String, val symbol: String, val displayName: String) {
     CAD("CAD", "$", "Canadian Dollar"),
-    USD("USD", "$", "US Dollar"),
-    EUR("EUR", "€", "Euro"),
-    GBP("GBP", "£", "British Pound");
+    USD("USD", "$", "US Dollar");
     
     override fun toString(): String = code
 }

@@ -1,0 +1,161 @@
+package com.north.mobile.ui.chat
+
+import com.north.mobile.data.ai.*
+import kotlinx.coroutines.test.runTest
+import kotlin.test.*
+
+/**
+ * Test for AI CFO Onboarding Service functionality
+ */
+class AICFOOnboardingTest {
+    
+    private lateinit var onboardingService: AICFOOnboardingService
+    
+    @BeforeTest
+    fun setup() {
+        onboardingService = AICFOOnboardingService()
+    }
+    
+    @Test
+    fun testStartOnboardingConversation() = runTest {
+        // Given
+        val userName = "Alex"
+        
+        // When
+        val response = onboardingService.startOnboardingConversation(userName)
+        
+        // Then
+        assertTrue(response.message.contains(userName))
+        assertTrue(response.message.contains("personal CFO"))
+        assertEquals(ConversationTone.WARM_FRIENDLY, response.tone)
+        assertEquals(EncouragementLevel.ENCOURAGING, response.encouragementLevel)
+        assertTrue(response.followUpQuestions.isNotEmpty())
+        assertTrue(response.celebrationElements.isNotEmpty())
+        assertFalse(onboardingService.isOnboardingComplete())
+        assertEquals(OnboardingStep.WELCOME, onboardingService.getCurrentOnboardingStep())
+    }
+    
+    @Test
+    fun testOnboardingProgressionThroughSteps() = runTest {
+        // Given
+        val userName = "Jordan"
+        onboardingService.startOnboardingConversation(userName)
+        
+        // Test progression through onboarding steps
+        val responses = listOf(
+            "I want to save for a vacation",
+            "I love dining out with friends",
+            "I'm doing okay but want to improve",
+            "I want to build an emergency fund",
+            "Yes, create some goals for me!"
+        )
+        
+        val expectedSteps = listOf(
+            OnboardingStep.GOALS_DISCOVERY,
+            OnboardingStep.LIFESTYLE_LEARNING,
+            OnboardingStep.FINANCIAL_SITUATION,
+            OnboardingStep.PRIORITIES_SETTING,
+            OnboardingStep.GOAL_CREATION
+        )
+        
+        // When & Then
+        responses.forEachIndexed { index, userMessage ->
+            val response = onboardingService.processOnboardingResponse(userMessage)
+            
+            assertNotNull(response)
+            assertTrue(response.message.isNotEmpty())
+            assertTrue(response.emojis.isNotEmpty())
+            
+            if (index < expectedSteps.size) {
+                assertEquals(expectedSteps[index], onboardingService.getCurrentOnboardingStep())
+            }
+        }
+        
+        // After all responses, onboarding should be complete
+        assertTrue(onboardingService.isOnboardingComplete())
+        assertEquals(OnboardingStep.COMPLETED, onboardingService.getCurrentOnboardingStep())
+    }
+    
+    @Test
+    fun testGoalGeneration() = runTest {
+        // Given
+        val userName = "Sam"
+        onboardingService.startOnboardingConversation(userName)
+        
+        // Simulate onboarding conversation
+        onboardingService.processOnboardingResponse("I want to save for a house")
+        onboardingService.processOnboardingResponse("I'm pretty frugal and like saving")
+        onboardingService.processOnboardingResponse("I'm just starting out")
+        onboardingService.processOnboardingResponse("Build my emergency fund")
+        
+        // When
+        val finalResponse = onboardingService.processOnboardingResponse("Yes, create goals for me!")
+        
+        // Then
+        assertTrue(finalResponse.message.contains("created"))
+        assertTrue(finalResponse.actionableRecommendations.isNotEmpty())
+        assertEquals(ConversationTone.CELEBRATORY, finalResponse.tone)
+        assertEquals(EncouragementLevel.CELEBRATORY, finalResponse.encouragementLevel)
+        assertTrue(finalResponse.celebrationElements.any { it.type == CelebrationElementType.CONFETTI })
+    }
+    
+    @Test
+    fun testContextBuilding() = runTest {
+        // Given
+        val userName = "Taylor"
+        onboardingService.startOnboardingConversation(userName)
+        
+        // When
+        onboardingService.processOnboardingResponse("I'm worried about not having enough savings")
+        val context = onboardingService.getUserContext()
+        
+        // Then
+        assertTrue(context.containsKey("userName"))
+        assertTrue(context.containsKey("primaryInterest"))
+        assertEquals(userName, context["userName"])
+        assertEquals("financial_anxiety", context["primaryInterest"])
+    }
+    
+    @Test
+    fun testDifferentUserPersonalities() = runTest {
+        // Test social active user
+        val socialUser = AICFOOnboardingService()
+        socialUser.startOnboardingConversation("Alex")
+        socialUser.processOnboardingResponse("I want to save money")
+        val socialResponse = socialUser.processOnboardingResponse("I love dining out and social activities")
+        
+        assertTrue(socialResponse.message.contains("social") || socialResponse.message.contains("dining"))
+        
+        // Test savings-focused user
+        val saverUser = AICFOOnboardingService()
+        saverUser.startOnboardingConversation("Jordan")
+        saverUser.processOnboardingResponse("I want to save money")
+        val saverResponse = saverUser.processOnboardingResponse("I prefer saving over spending on extras")
+        
+        assertTrue(saverResponse.message.contains("saving") || saverResponse.message.contains("frugal"))
+    }
+    
+    @Test
+    fun testOnboardingCompletionHandling() = runTest {
+        // Given - complete onboarding
+        val userName = "Casey"
+        onboardingService.startOnboardingConversation(userName)
+        
+        // Complete all onboarding steps
+        onboardingService.processOnboardingResponse("I want to save for retirement")
+        onboardingService.processOnboardingResponse("I enjoy travel and experiences")
+        onboardingService.processOnboardingResponse("I'm comfortable but want to optimize")
+        onboardingService.processOnboardingResponse("Optimize my current savings")
+        onboardingService.processOnboardingResponse("Yes, create goals for me!")
+        
+        assertTrue(onboardingService.isOnboardingComplete())
+        
+        // When - send message after onboarding is complete
+        val postOnboardingResponse = onboardingService.processOnboardingResponse("How are my goals doing?")
+        
+        // Then
+        assertNotNull(postOnboardingResponse)
+        assertEquals(ConversationTone.WARM_FRIENDLY, postOnboardingResponse.tone)
+        assertTrue(postOnboardingResponse.followUpQuestions.isNotEmpty())
+    }
+}

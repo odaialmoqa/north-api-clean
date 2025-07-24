@@ -1,0 +1,298 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.domain.model.*
+import com.north.mobile.data.analytics.*
+import kotlinx.datetime.LocalDate
+
+/**
+ * Achievement types for gamification and celebration
+ */
+enum class AchievementType {
+    GOAL_MILESTONE,
+    STREAK_ACHIEVEMENT,
+    SAVINGS_MILESTONE,
+    BUDGET_SUCCESS,
+    SPENDING_REDUCTION,
+    FIRST_TIME_ACHIEVEMENT
+}
+
+/**
+ * Achievement data class for tracking user accomplishments
+ */
+data class Achievement(
+    val id: String,
+    val type: AchievementType,
+    val title: String,
+    val description: String,
+    val dateAchieved: LocalDate,
+    val value: Money?,
+    val category: Category?,
+    val isRecent: Boolean = false
+)
+
+/**
+ * Main friendly AI response with warm, caring personality
+ */
+data class FriendlyAIResponse(
+    val message: String,
+    val tone: ConversationTone,
+    val supportingData: List<FriendlyDataPoint>,
+    val actionableRecommendations: List<FriendlyRecommendation>,
+    val followUpQuestions: List<String>,
+    val celebrationElements: List<CelebrationElement>,
+    val emojis: List<String>,
+    val encouragementLevel: EncouragementLevel
+)
+
+/**
+ * User financial context for personalized responses
+ */
+data class UserFinancialContext(
+    val accounts: List<Account>,
+    val recentTransactions: List<Transaction>,
+    val goals: List<FinancialGoal>,
+    val budgets: List<Budget>,
+    val userPreferences: UserPreferences,
+    val userName: String,
+    val recentAchievements: List<Achievement>
+)
+
+/**
+ * Budget status for conversation context
+ */
+data class BudgetStatus(
+    val isOnTrack: Boolean,
+    val percentageUsed: Double,
+    val overBudgetCategories: Int
+)
+
+/**
+ * Expense request for affordability analysis
+ */
+data class ExpenseRequest(
+    val description: String,
+    val amount: Money,
+    val category: Category,
+    val isRecurring: Boolean = false,
+    val urgency: ExpenseUrgency = ExpenseUrgency.NORMAL
+)
+
+enum class ExpenseUrgency {
+    LOW, NORMAL, HIGH, EMERGENCY
+}
+
+/**
+ * Friendly insight with celebratory messaging
+ */
+data class FriendlyInsight(
+    val id: String,
+    val title: String,
+    val message: String,
+    val tone: ConversationTone,
+    val celebrationLevel: CelebrationType,
+    val supportingData: List<FriendlyDataPoint>,
+    val actionableSteps: List<String>,
+    val potentialSavings: Money?,
+    val encouragingContext: String,
+    val emojis: List<String>
+)
+
+/**
+ * Friendly spending analysis with supportive messaging
+ */
+data class FriendlySpendingAnalysis(
+    val category: String,
+    val timeframe: DateRange,
+    val friendlyMessage: String,
+    val tone: ConversationTone,
+    val positiveHighlights: List<String>,
+    val gentleGuidance: List<String>,
+    val celebrationElements: List<CelebrationElement>,
+    val supportingData: List<FriendlyDataPoint>,
+    val encouragingComparison: String?
+)
+
+/**
+ * Friendly affordability result with encouraging guidance
+ */
+data class FriendlyAffordabilityResult(
+    val canAfford: Boolean,
+    val encouragingMessage: String,
+    val supportiveReasoning: String,
+    val impactOnGoals: FriendlyGoalImpactAnalysis,
+    val alternativeOptions: List<FriendlyAlternative>,
+    val celebrationLevel: CelebrationType,
+    val tone: ConversationTone,
+    val motivationalContext: String,
+    val emojis: List<String>
+)
+
+/**
+ * Engaging transaction explanation with detective story elements
+ */
+data class FriendlyTransactionExplanation(
+    val transactionId: String,
+    val detectiveStory: String,
+    val friendlyContext: String,
+    val positiveSpins: List<String>,
+    val insightfulObservations: List<String>,
+    val celebrationElements: List<CelebrationElement>,
+    val relatedFindings: List<String>,
+    val encouragingConclusion: String,
+    val emojis: List<String>
+)
+
+/**
+ * Friendly optimization suggestion with positive framing
+ */
+data class FriendlyOptimizationSuggestion(
+    val id: String,
+    val title: String,
+    val friendlyDescription: String,
+    val potentialSavings: Money,
+    val motivationalMessage: String,
+    val easySteps: List<String>,
+    val celebrationPotential: CelebrationType,
+    val encouragingContext: String,
+    val tone: ConversationTone,
+    val emojis: List<String>
+)
+
+/**
+ * Natural conversation starter for chat initiation
+ */
+data class ConversationStarter(
+    val text: String,
+    val category: ConversationCategory,
+    val personalizedContext: String,
+    val tone: ConversationTone,
+    val emoji: String
+)
+
+/**
+ * Enthusiastic celebration message for achievements
+ */
+data class CelebrationMessage(
+    val message: String,
+    val enthusiasmLevel: CelebrationType,
+    val celebrationElements: List<CelebrationElement>,
+    val personalizedPraise: String,
+    val nextStepEncouragement: String,
+    val emojis: List<String>,
+    val tone: ConversationTone
+)
+
+/**
+ * Friendly data point with encouraging context
+ */
+data class FriendlyDataPoint(
+    val label: String,
+    val value: String,
+    val friendlyExplanation: String,
+    val encouragingContext: String,
+    val emoji: String
+)
+
+/**
+ * Friendly recommendation with supportive language
+ */
+data class FriendlyRecommendation(
+    val id: String,
+    val title: String,
+    val friendlyDescription: String,
+    val motivationalReason: String,
+    val easyActionText: String,
+    val celebrationPotential: CelebrationType,
+    val supportiveContext: String,
+    val emoji: String
+)
+
+/**
+ * Friendly goal impact analysis with encouraging perspective
+ */
+data class FriendlyGoalImpactAnalysis(
+    val affectedGoals: List<String>,
+    val encouragingMessage: String,
+    val positiveFraming: String,
+    val alternativeStrategies: List<String>,
+    val motivationalContext: String,
+    val celebrationOpportunities: List<String>
+)
+
+/**
+ * Friendly alternative option with positive framing
+ */
+data class FriendlyAlternative(
+    val description: String,
+    val amount: Money,
+    val friendlyPros: List<String>,
+    val gentleCons: List<String>,
+    val encouragingMessage: String,
+    val emoji: String
+)
+
+/**
+ * Celebration element for positive reinforcement
+ */
+data class CelebrationElement(
+    val type: CelebrationElementType,
+    val content: String,
+    val intensity: CelebrationIntensity
+)
+
+// Enums for friendly AI personality
+
+enum class ConversationTone {
+    ENCOURAGING,
+    CELEBRATORY, 
+    SUPPORTIVE,
+    GENTLE_GUIDANCE,
+    EXCITED,
+    CARING,
+    ENTHUSIASTIC,
+    WARM_FRIENDLY
+}
+
+enum class CelebrationType {
+    NONE,
+    GENTLE_PRAISE,
+    ENTHUSIASTIC,
+    MILESTONE_CELEBRATION,
+    ACHIEVEMENT_PARTY,
+    PROGRESS_CHEER
+}
+
+enum class EncouragementLevel {
+    MINIMAL,
+    SUPPORTIVE,
+    ENCOURAGING,
+    HIGHLY_MOTIVATING,
+    CELEBRATORY
+}
+
+enum class ConversationCategory {
+    AFFORDABILITY_CHECK,
+    GOAL_PROGRESS,
+    SPENDING_INSIGHTS,
+    SAVINGS_ADVICE,
+    BUDGET_STATUS,
+    GENERAL_ENCOURAGEMENT,
+    ACHIEVEMENT_CELEBRATION,
+    OPTIMIZATION_TIPS
+}
+
+enum class CelebrationElementType {
+    CONFETTI,
+    EMOJI_BURST,
+    ACHIEVEMENT_BADGE,
+    PROGRESS_ANIMATION,
+    ENCOURAGING_TEXT,
+    MILESTONE_MARKER
+}
+
+enum class CelebrationIntensity {
+    SUBTLE,
+    MODERATE,
+    ENTHUSIASTIC,
+    EXPLOSIVE
+}

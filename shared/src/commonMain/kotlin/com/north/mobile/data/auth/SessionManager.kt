@@ -1,88 +1,53 @@
 package com.north.mobile.data.auth
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.datetime.Instant
 
 /**
- * Interface for managing user sessions and JWT tokens
+ * Interface for managing user authentication sessions
  */
 interface SessionManager {
     /**
-     * Store authentication tokens after successful login
+     * Save authentication token securely
      */
-    suspend fun storeTokens(accessToken: String, refreshToken: String, expiresAt: Instant): Result<Unit>
+    suspend fun saveAuthToken(token: String)
     
     /**
-     * Get the current access token
+     * Get stored authentication token
      */
-    suspend fun getAccessToken(): Result<String?>
+    suspend fun getAuthToken(): String?
     
     /**
-     * Get the current refresh token
+     * Save user information
      */
-    suspend fun getRefreshToken(): Result<String?>
+    suspend fun saveUser(user: com.north.mobile.data.api.UserResponse)
     
     /**
-     * Check if the current access token is valid (not expired)
+     * Get stored user information
      */
-    suspend fun isTokenValid(): Boolean
+    suspend fun getUser(): com.north.mobile.data.api.UserResponse?
     
     /**
-     * Refresh the access token using the refresh token
+     * Check if current session is valid
      */
-    suspend fun refreshToken(): Result<TokenRefreshResult>
+    suspend fun isSessionValid(): Boolean
     
     /**
-     * Clear all stored tokens (for logout)
+     * Clear all session data (logout)
      */
-    suspend fun clearTokens(): Result<Unit>
+    suspend fun clearSession()
     
     /**
-     * Get the current session state
+     * Get session state as a flow
      */
     fun getSessionState(): Flow<SessionState>
-    
-    /**
-     * Check if user has a valid session
-     */
-    suspend fun hasValidSession(): Boolean
-    
-    /**
-     * Get token expiration time
-     */
-    suspend fun getTokenExpirationTime(): Instant?
 }
 
 /**
- * Result of token refresh operation
- */
-sealed class TokenRefreshResult {
-    data class Success(val accessToken: String, val expiresAt: Instant) : TokenRefreshResult()
-    object RefreshTokenExpired : TokenRefreshResult()
-    data class Error(val message: String) : TokenRefreshResult()
-}
-
-/**
- * Current session state
+ * Data class representing the current session state
  */
 data class SessionState(
-    val hasValidSession: Boolean = false,
-    val accessToken: String? = null,
-    val tokenExpiresAt: Instant? = null,
-    val isRefreshing: Boolean = false
+    val isAuthenticated: Boolean = false,
+    val token: String? = null,
+    val user: com.north.mobile.data.api.UserResponse? = null,
+    val expiresAt: Long? = null
 )
-
-/**
- * JWT token data
- */
-data class AuthTokens(
-    val accessToken: String,
-    val refreshToken: String,
-    val expiresAt: Instant,
-    val tokenType: String = "Bearer"
-)
-
-/**
- * Exception thrown when session operations fail
- */
-class SessionException(message: String, cause: Throwable? = null) : Exception(message, cause)

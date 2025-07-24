@@ -1,0 +1,455 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.data.finance.FinancialDataAnalyzer
+import com.north.mobile.data.plaid.*
+import com.north.mobile.ui.chat.model.MessageType
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
+
+class AICFOFinancialIntegrationTest {
+    
+    // Mock Plaid service for testing
+    private class MockPlaidService : PlaidIntegrationService {
+        override suspend fun initializePlaidLink(): SimplePlaidLinkResult {
+            return SimplePlaidLinkResult(
+                success = true,
+                publicToken = "test_public_token",
+                error = null
+            )
+        }
+        
+        override suspend fun exchangePublicToken(publicToken: String): SimpleAccountConnectionResult {
+            return SimpleAccountConnectionResult(
+                success = true,
+                accounts = listOf(
+                    SimplePlaidAccount(
+                        id = "checking_001",
+                        name = "Main Checking",
+                        type = "checking",
+                        subtype = "checking",
+                        balance = 2500.0,
+                        institutionName = "Test Bank",
+                        lastSyncTime = System.currentTimeMillis(),
+                        connectionStatus = PlaidConnectionStatus.HEALTHY
+                    ),
+                    SimplePlaidAccount(
+                        id = "savings_001",
+                        name = "Emergency Savings",
+                        type = "savings",
+                        subtype = "savings",
+                        balance = 5000.0,
+                        institutionName = "Test Bank",
+                        lastSyncTime = System.currentTimeMillis(),
+                        connectionStatus = PlaidConnectionStatus.HEALTHY
+                    )
+                ),
+                error = null
+            )
+        }
+        
+        override suspend fun getAccounts(userId: String): List<SimplePlaidAccount> {
+            return listOf(
+                SimplePlaidAccount(
+                    id = "checking_001",
+                    name = "Main Checking",
+                    type = "checking",
+                    subtype = "checking",
+                    balance = 2500.0,
+                    institutionName = "Test Bank",
+                    lastSyncTime = System.currentTimeMillis(),
+                    connectionStatus = PlaidConnectionStatus.HEALTHY
+                ),
+                SimplePlaidAccount(
+                    id = "savings_001",
+                    name = "Emergency Savings",
+                    type = "savings",
+                    subtype = "savings",
+                    balance = 5000.0,
+                    institutionName = "Test Bank",
+                    lastSyncTime = System.currentTimeMillis(),
+                    connectionStatus = PlaidConnectionStatus.HEALTHY
+                )
+            )
+        }
+        
+        override suspend fun syncTransactions(accountId: String): SimpleTransactionSyncResult {
+            val transactions = when (accountId) {
+                "checking_001" -> listOf(
+                    SimplePlaidTransaction(
+                        id = "txn_001",
+                        accountId = accountId,
+                        amount = -45.67,
+                        date = "2024-01-15",
+                        description = "Grocery Store Purchase",
+                        merchantName = "Fresh Market",
+                        category = listOf("Food and Drink", "Groceries")
+                    ),
+                    SimplePlaidTransaction(
+                        id = "txn_002",
+                        accountId = accountId,
+                        amount = -12.50,
+                        date = "2024-01-14",
+                        description = "Coffee Shop",
+                        merchantName = "Local Cafe",
+                        category = listOf("Food and Drink", "Coffee Shops")
+                    ),
+                    SimplePlaidTransaction(
+                        id = "txn_003",
+                        accountId = accountId,
+                        amount = 2500.0,
+                        date = "2024-01-01",
+                        description = "Salary Deposit",
+                        merchantName = "Employer Inc",
+                        category = listOf("Deposit", "Payroll")
+                    )
+                )
+                "savings_001" -> listOf(
+                    SimplePlaidTransaction(
+                        id = "txn_004",
+                        accountId = accountId,
+                        amount = 500.0,
+                        date = "2024-01-01",
+                        description = "Transfer from Checking",
+                        merchantName = null,
+                        category = listOf("Transfer", "Deposit")
+                    )
+                )
+                else -> emptyList()
+            }
+            
+            return SimpleTransactionSyncResult(
+                success = true,
+                transactions = transactions,
+                error = null
+            )
+        }
+        
+        override suspend fun disconnectAccount(accountId: String): Boolean = true
+        
+        override suspend fun refreshAccountConnection(accountId: String): SimpleAccountConnectionResult {
+            return SimpleAccountConnectionResult(
+                success = true,
+                accounts = getAccounts("current_user"),
+                error = null
+            )
+        }
+    }
+    
+    @Test
+    fun testFinancialDataAnalyzer_analyzeSpendingPatterns() = runTest {
+        val analyzer = FinancialDataAnalyzer()
+        val transactions = listOf(
+            SimplePlaidTransaction(
+                id = "txn_001",
+                accountId = "test_account",
+                amount = -45.67,
+                date = "2024-01-15",
+                description = "Grocery Store Purchase",
+                merchantName = "Fresh Market",
+                category = listOf("Food and Drink", "Groceries")
+            ),
+            SimplePlaidTransaction(
+                id = "txn_002",
+                accountId = "test_account",
+                amount = -12.50,
+                date = "2024-01-14",
+                description = "Coffee Shop",
+                merchantName = "Local Cafe",
+                category = listOf("Food and Drink", "Coffee Shops")
+            ),
+            SimplePlaidTransaction(
+                id = "txn_003",
+                accountId = "test_account",
+                amount = -100.0,
+                date = "2024-01-10",
+                description = "Gas Station",
+                merchantName = "Shell",
+                category = listOf("Transportation", "Gas Stations")
+            )
+        )
+        
+        val analysis = analyzer.analyzeSpendingPatterns(transactions, 30)
+        
+        // Verify spending analysis
+        assertEquals(158.17, analysis.totalSpent, 0.01)
+        assertTrue(analysis.categories.containsKey("Food and Drink"))
+        assertTrue(analysis.categories.containsKey("Transportation"))
+        assertNotNull(analysis.topCategory)
+        assertEquals("Food and Drink", analysis.topCategory?.category)
+    }
+    
+    @Test
+    fun testFinancialDataAnalyzer_analyzeSavingsRate() = runTest {
+        val analyzer = FinancialDataAnalyzer()
+        val accounts = listOf(
+            SimplePlaidAccount(
+                id = "checking_001",
+                name = "Main Checking",
+                type = "checking",
+                subtype = "checking",
+                balance = 2500.0,
+                institutionName = "Test Bank",
+                lastSyncTime = System.currentTimeMillis(),
+                connectionStatus = PlaidConnectionStatus.HEALTHY
+            ),
+            SimplePlaidAccount(
+                id = "savings_001",
+                name = "Emergency Savings",
+                type = "savings",
+                subtype = "savings",
+                balance = 5000.0,
+                institutionName = "Test Bank",
+                lastSyncTime = System.currentTimeMillis(),
+                connectionStatus = PlaidConnectionStatus.HEALTHY
+            )
+        )
+        
+        val transactions = listOf(
+            SimplePlaidTransaction(
+                id = "txn_income",
+                accountId = "checking_001",
+                amount = 3000.0,
+                date = "2024-01-01",
+                description = "Salary",
+                merchantName = "Employer",
+                category = listOf("Deposit", "Payroll")
+            ),
+            SimplePlaidTransaction(
+                id = "txn_expense",
+                accountId = "checking_001",
+                amount = -2000.0,
+                date = "2024-01-15",
+                description = "Monthly Expenses",
+                merchantName = "Various",
+                category = listOf("General Merchandise")
+            )
+        )
+        
+        val analysis = analyzer.analyzeSavingsRate(accounts, transactions, 30)
+        
+        // Verify savings analysis
+        assertEquals(7500.0, analysis.totalBalance, 0.01)
+        assertEquals(5000.0, analysis.savingsBalance, 0.01)
+        assertEquals(2500.0, analysis.checkingBalance, 0.01)
+        assertTrue(analysis.savingsRate > 60) // 5000/7500 = 66.67%
+        assertTrue(analysis.monthlySavingsRate > 30) // (3000-2000)/3000 = 33.33%
+    }
+    
+    @Test
+    fun testFinancialDataAnalyzer_calculateFinancialHealthScore() = runTest {
+        val analyzer = FinancialDataAnalyzer()
+        val accounts = listOf(
+            SimplePlaidAccount(
+                id = "checking_001",
+                name = "Main Checking",
+                type = "checking",
+                subtype = "checking",
+                balance = 2500.0,
+                institutionName = "Test Bank",
+                lastSyncTime = System.currentTimeMillis(),
+                connectionStatus = PlaidConnectionStatus.HEALTHY
+            ),
+            SimplePlaidAccount(
+                id = "savings_001",
+                name = "Emergency Savings",
+                type = "savings",
+                subtype = "savings",
+                balance = 5000.0,
+                institutionName = "Test Bank",
+                lastSyncTime = System.currentTimeMillis(),
+                connectionStatus = PlaidConnectionStatus.HEALTHY
+            )
+        )
+        
+        val transactions = listOf(
+            SimplePlaidTransaction(
+                id = "txn_income",
+                accountId = "checking_001",
+                amount = 3000.0,
+                date = "2024-01-01",
+                description = "Salary",
+                merchantName = "Employer",
+                category = listOf("Deposit", "Payroll")
+            ),
+            SimplePlaidTransaction(
+                id = "txn_expense",
+                accountId = "checking_001",
+                amount = -1500.0,
+                date = "2024-01-15",
+                description = "Monthly Expenses",
+                merchantName = "Various",
+                category = listOf("General Merchandise")
+            )
+        )
+        
+        val healthAnalysis = analyzer.calculateFinancialHealthScore(accounts, transactions, 60)
+        
+        // Verify health analysis
+        assertTrue(healthAnalysis.overallScore > 0)
+        assertTrue(healthAnalysis.savingsScore > 0)
+        assertTrue(healthAnalysis.spendingScore > 0)
+        assertTrue(healthAnalysis.debtScore > 0)
+        assertTrue(healthAnalysis.insights.isNotEmpty())
+        assertTrue(healthAnalysis.recommendations.isNotEmpty())
+        
+        // Check that we have an overall health insight
+        val healthInsight = healthAnalysis.insights.find { it.title == "Financial Health" }
+        assertNotNull(healthInsight)
+        assertTrue(healthInsight.score > 0)
+    }
+    
+    @Test
+    fun testAICFOFinancialAdvisor_getFinancialHealthOverview() = runTest {
+        val mockPlaidService = MockPlaidService()
+        val analyzer = FinancialDataAnalyzer()
+        val advisor = AICFOFinancialAdvisor(mockPlaidService, analyzer)
+        
+        // Refresh data to load mock accounts and transactions
+        advisor.refreshFinancialData()
+        
+        // Get financial health overview
+        val healthMessage = advisor.getFinancialHealthOverview()
+        
+        // Verify the message
+        assertEquals(MessageType.AI_INSIGHT, healthMessage.type)
+        assertTrue(healthMessage.content.isNotEmpty())
+        assertTrue(healthMessage.supportingData.isNotEmpty())
+        assertTrue(healthMessage.recommendations.isNotEmpty())
+        
+        // Check that we have meaningful data points
+        val healthDataPoint = healthMessage.supportingData.find { it.label == "Financial Health" }
+        assertNotNull(healthDataPoint)
+    }
+    
+    @Test
+    fun testAICFOFinancialAdvisor_getSpendingInsights() = runTest {
+        val mockPlaidService = MockPlaidService()
+        val analyzer = FinancialDataAnalyzer()
+        val advisor = AICFOFinancialAdvisor(mockPlaidService, analyzer)
+        
+        // Refresh data to load mock accounts and transactions
+        advisor.refreshFinancialData()
+        
+        // Get spending insights
+        val spendingMessage = advisor.getSpendingInsights()
+        
+        // Verify the message
+        assertEquals(MessageType.AI_INSIGHT, spendingMessage.type)
+        assertTrue(spendingMessage.content.isNotEmpty())
+        assertTrue(spendingMessage.supportingData.isNotEmpty())
+        
+        // Check that we have spending category data
+        val categoryDataPoint = spendingMessage.supportingData.find { it.label == "Top Spending Category" }
+        assertNotNull(categoryDataPoint)
+    }
+    
+    @Test
+    fun testAICFOFinancialAdvisor_getSavingsOpportunities() = runTest {
+        val mockPlaidService = MockPlaidService()
+        val analyzer = FinancialDataAnalyzer()
+        val advisor = AICFOFinancialAdvisor(mockPlaidService, analyzer)
+        
+        // Refresh data to load mock accounts and transactions
+        advisor.refreshFinancialData()
+        
+        // Get savings opportunities
+        val savingsMessage = advisor.getSavingsOpportunities()
+        
+        // Verify the message
+        assertEquals(MessageType.AI_INSIGHT, savingsMessage.type)
+        assertTrue(savingsMessage.content.isNotEmpty())
+        
+        // The message should either have savings opportunities or indicate good balance
+        assertTrue(
+            savingsMessage.supportingData.isNotEmpty() || 
+            savingsMessage.content.contains("well-balanced") ||
+            savingsMessage.content.contains("analyze your spending")
+        )
+    }
+    
+    @Test
+    fun testAICFOFinancialAdvisor_generatePersonalizedGoals() = runTest {
+        val mockPlaidService = MockPlaidService()
+        val analyzer = FinancialDataAnalyzer()
+        val advisor = AICFOFinancialAdvisor(mockPlaidService, analyzer)
+        
+        // Refresh data to load mock accounts and transactions
+        advisor.refreshFinancialData()
+        
+        // Generate personalized goals
+        val goals = advisor.generatePersonalizedGoals()
+        
+        // Verify goals are generated
+        assertTrue(goals.isNotEmpty())
+        
+        // Check for common goal types
+        val hasEmergencyFund = goals.any { it.name.contains("Emergency") }
+        val hasSavingsRate = goals.any { it.name.contains("Savings Rate") }
+        
+        // Should have at least one meaningful goal
+        assertTrue(hasEmergencyFund || hasSavingsRate)
+        
+        // Verify goal structure
+        goals.forEach { goal ->
+            assertTrue(goal.id.isNotEmpty())
+            assertTrue(goal.name.isNotEmpty())
+            assertTrue(goal.description.isNotEmpty())
+            assertTrue(goal.emoji.isNotEmpty())
+            assertTrue(goal.targetAmount > 0)
+            assertTrue(goal.targetDate > System.currentTimeMillis())
+        }
+    }
+    
+    @Test
+    fun testEnhancedAICFOService_processMessageWithFinancialData() = runTest {
+        val mockPlaidService = MockPlaidService()
+        val enhancedService = EnhancedAICFOService(mockPlaidService)
+        
+        // Test spending inquiry
+        val spendingResponse = enhancedService.processMessage("How much am I spending?")
+        assertNotNull(spendingResponse)
+        assertTrue(spendingResponse.content.isNotEmpty())
+        
+        // Test savings inquiry
+        val savingsResponse = enhancedService.processMessage("How can I save more money?")
+        assertNotNull(savingsResponse)
+        assertTrue(savingsResponse.content.isNotEmpty())
+        
+        // Test financial health inquiry
+        val healthResponse = enhancedService.processMessage("What's my financial health score?")
+        assertNotNull(healthResponse)
+        assertTrue(healthResponse.content.isNotEmpty())
+        
+        // Test balance inquiry
+        val balanceResponse = enhancedService.processMessage("What are my account balances?")
+        assertNotNull(balanceResponse)
+        assertTrue(balanceResponse.content.isNotEmpty())
+    }
+    
+    @Test
+    fun testEnhancedAICFOService_initializeChatWithFinancialData() = runTest {
+        val mockPlaidService = MockPlaidService()
+        val enhancedService = EnhancedAICFOService(mockPlaidService)
+        
+        // Initialize chat
+        val welcomeMessage = enhancedService.initializeChat("TestUser")
+        
+        // Verify welcome message
+        assertNotNull(welcomeMessage)
+        assertTrue(welcomeMessage.content.isNotEmpty())
+        assertTrue(welcomeMessage.content.contains("TestUser"))
+        
+        // Should have supporting data about connected accounts
+        assertTrue(welcomeMessage.supportingData.isNotEmpty())
+        
+        // Check for account and balance information
+        val accountsData = welcomeMessage.supportingData.find { it.label == "Connected Accounts" }
+        val balanceData = welcomeMessage.supportingData.find { it.label == "Total Balance" }
+        
+        assertNotNull(accountsData)
+        assertNotNull(balanceData)
+    }
+}

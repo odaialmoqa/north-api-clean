@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- North star/diamond shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,20 L70,54 L54,88 L38,54 Z" />
+    
+    <!-- Subtle inner highlight -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M54,28 L62,54 L54,80 L46,54 Z" />
+        
+</vector>

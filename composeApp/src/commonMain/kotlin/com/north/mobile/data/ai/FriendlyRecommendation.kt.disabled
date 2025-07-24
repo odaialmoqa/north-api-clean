@@ -1,0 +1,42 @@
+package com.north.mobile.data.ai
+
+/**
+ * Represents a friendly, actionable recommendation for the user
+ */
+data class FriendlyRecommendation(
+    val id: String,
+    val title: String,
+    val description: String,
+    val category: RecommendationCategory,
+    val priority: PriorityLevel,
+    val estimatedImpact: String,
+    val estimatedTime: String,
+    val actionSteps: List<String>,
+    val relatedData: List<FriendlyDataPoint> = emptyList(),
+    val isCompleted: Boolean = false
+)
+
+/**
+ * Categories for recommendations
+ */
+enum class RecommendationCategory {
+    SAVINGS,
+    SPENDING,
+    INVESTING,
+    DEBT_MANAGEMENT,
+    BUDGETING,
+    FINANCIAL_GOAL,
+    TAX_OPTIMIZATION,
+    INSURANCE,
+    RETIREMENT,
+    EMERGENCY_FUND
+}
+
+/**
+ * Priority levels for recommendations
+ */
+enum class PriorityLevel {
+    HIGH,
+    MEDIUM,
+    LOW
+}

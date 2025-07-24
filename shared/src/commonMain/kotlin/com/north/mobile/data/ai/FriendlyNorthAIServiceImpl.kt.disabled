@@ -1,0 +1,636 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.domain.model.*
+import com.north.mobile.data.analytics.*
+import com.north.mobile.data.goal.GoalService
+import com.north.mobile.data.gamification.GamificationService
+import kotlinx.datetime.*
+import kotlin.math.*
+import kotlin.random.Random
+
+/**
+ * Implementation of friendly North AI conversational interface
+ * Provides warm, caring financial assistance with celebratory personality
+ */
+class FriendlyNorthAIServiceImpl(
+    private val baseAIService: NorthAIService,
+    private val financialAnalyticsService: FinancialAnalyticsService,
+    private val goalService: GoalService,
+    private val gamificationService: GamificationService
+) : FriendlyNorthAIService {
+    
+    private val friendlyMessageGenerator = FriendlyMessageGenerator()
+    private val celebrationManager = CelebrationManager()
+    private val conversationPersonalizer = ConversationPersonalizer()
+    
+    override suspend fun processUserQuery(
+        query: String,
+        context: UserFinancialContext
+    ): Result<FriendlyAIResponse> {
+        return try {
+            // Get base AI response
+            val baseResponse = baseAIService.processUserQuery(query, context).getOrThrow()
+            
+            // Transform to friendly response
+            val friendlyResponse = friendlyMessageGenerator.transformToFriendly(
+                baseResponse, 
+                context,
+                determineQueryTone(query)
+            )
+            
+            Result.success(friendlyResponse)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun generatePersonalizedInsights(
+        context: UserFinancialContext
+    ): Result<List<FriendlyInsight>> {
+        return try {
+            val baseInsights = baseAIService.generatePersonalizedInsights(context).getOrThrow()
+            
+            val friendlyInsights = baseInsights.map { insight ->
+                friendlyMessageGenerator.transformInsightToFriendly(insight, context)
+            }
+            
+            Result.success(friendlyInsights)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun analyzeSpendingPattern(
+        category: String,
+        timeframe: DateRange,
+        context: UserFinancialContext
+    ): Result<FriendlySpendingAnalysis> {
+        return try {
+            val baseAnalysis = baseAIService.analyzeSpendingPattern(category, timeframe, context).getOrThrow()
+            
+            val friendlyAnalysis = friendlyMessageGenerator.transformSpendingAnalysisToFriendly(
+                baseAnalysis, 
+                category, 
+                timeframe, 
+                context
+            )
+            
+            Result.success(friendlyAnalysis)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun checkAffordability(
+        expense: ExpenseRequest,
+        context: UserFinancialContext
+    ): Result<FriendlyAffordabilityResult> {
+        return try {
+            val baseResult = baseAIService.checkAffordability(expense, context).getOrThrow()
+            
+            val friendlyResult = friendlyMessageGenerator.transformAffordabilityToFriendly(
+                baseResult, 
+                expense, 
+                context
+            )
+            
+            Result.success(friendlyResult)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun explainTransaction(
+        transactionId: String,
+        context: UserFinancialContext
+    ): Result<FriendlyTransactionExplanation> {
+        return try {
+            val baseExplanation = baseAIService.explainTransaction(transactionId, context).getOrThrow()
+            
+            val friendlyExplanation = friendlyMessageGenerator.transformTransactionExplanationToFriendly(
+                baseExplanation, 
+                context
+            )
+            
+            Result.success(friendlyExplanation)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun suggestOptimizations(
+        context: UserFinancialContext
+    ): Result<List<FriendlyOptimizationSuggestion>> {
+        return try {
+            val baseOptimizations = baseAIService.suggestOptimizations(context).getOrThrow()
+            
+            val friendlyOptimizations = baseOptimizations.map { optimization ->
+                friendlyMessageGenerator.transformOptimizationToFriendly(optimization, context)
+            }
+            
+            Result.success(friendlyOptimizations)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun generateConversationStarters(
+        context: UserFinancialContext
+    ): Result<List<ConversationStarter>> {
+        return try {
+            val starters = mutableListOf<ConversationStarter>()
+            
+            // Goal-based starters
+            if (context.goals.isNotEmpty()) {
+                val activeGoal = context.goals.first { it.isActive }
+                starters.add(ConversationStarter(
+                    text = "Hey! How's your ${activeGoal.title} goal coming along? 🎯",
+                    category = ConversationCategory.GOAL_PROGRESS,
+                    personalizedContext = "Based on your active ${activeGoal.title} goal",
+                    tone = ConversationTone.ENCOURAGING,
+                    emoji = "🎯"
+                ))
+            }
+            
+            // Budget-based starters
+            if (context.budgets.isNotEmpty()) {
+                val budgetStatus = calculateBudgetStatus(context.budgets)
+                if (budgetStatus.isOnTrack) {
+                    starters.add(ConversationStarter(
+                        text = "You're doing fantastic with your budget this month! Want to see the details? 💪",
+                        category = ConversationCategory.BUDGET_STATUS,
+                        personalizedContext = "Based on positive budget performance",
+                        tone = ConversationTone.CELEBRATORY,
+                        emoji = "💪"
+                    ))
+                }
+            }
+            
+            // General encouragement starters
+            starters.addAll(listOf(
+                ConversationStarter(
+                    text = "What financial win can we celebrate today? 🎉",
+                    category = ConversationCategory.GENERAL_ENCOURAGEMENT,
+                    personalizedContext = "General positive engagement",
+                    tone = ConversationTone.ENTHUSIASTIC,
+                    emoji = "🎉"
+                ),
+                ConversationStarter(
+                    text = "Ready to discover some money-saving opportunities? I've got some exciting ideas! 💡",
+                    category = ConversationCategory.OPTIMIZATION_TIPS,
+                    personalizedContext = "Optimization opportunities available",
+                    tone = ConversationTone.EXCITED,
+                    emoji = "💡"
+                )
+            ))
+            
+            Result.success(starters.shuffled().take(3))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    override suspend fun celebrateAchievement(
+        achievement: Achievement,
+        context: UserFinancialContext
+    ): Result<CelebrationMessage> {
+        return try {
+            val celebrationMessage = celebrationManager.createCelebrationMessage(achievement, context)
+            Result.success(celebrationMessage)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    // Private helper methods
+    
+    private fun determineQueryTone(query: String): ConversationTone {
+        val lowerQuery = query.lowercase()
+        return when {
+            lowerQuery.contains("help") || lowerQuery.contains("advice") -> ConversationTone.SUPPORTIVE
+            lowerQuery.contains("afford") || lowerQuery.contains("buy") -> ConversationTone.GENTLE_GUIDANCE
+            lowerQuery.contains("goal") || lowerQuery.contains("progress") -> ConversationTone.ENCOURAGING
+            lowerQuery.contains("save") || lowerQuery.contains("optimize") -> ConversationTone.EXCITED
+            else -> ConversationTone.WARM_FRIENDLY
+        }
+    }
+    
+    private fun calculateBudgetStatus(budgets: List<Budget>): BudgetStatus {
+        val totalBudget = budgets.sumOf { it.amount.amount }
+        val totalSpent = budgets.sumOf { it.spent.amount }
+        val percentageUsed = if (totalBudget > 0) (totalSpent.toDouble() / totalBudget.toDouble()) else 0.0
+        
+        return BudgetStatus(
+            isOnTrack = percentageUsed <= 0.8, // 80% or less is considered on track
+            percentageUsed = percentageUsed,
+            overBudgetCategories = budgets.filter { it.remaining.amount < 0 }.size
+        )
+    }
+}
+
+/**
+ * Helper class for generating friendly messages
+ */
+private class FriendlyMessageGenerator {
+    
+    fun transformToFriendly(
+        baseResponse: AIResponse,
+        context: UserFinancialContext,
+        tone: ConversationTone
+    ): FriendlyAIResponse {
+        val friendlyMessage = addWarmthToMessage(baseResponse.message, context.userName, tone)
+        val celebrationElements = generateCelebrationElements(baseResponse, tone)
+        val emojis = selectAppropriateEmojis(tone, baseResponse.confidence)
+        
+        return FriendlyAIResponse(
+            message = friendlyMessage,
+            tone = tone,
+            supportingData = baseResponse.supportingData.map { transformDataPointToFriendly(it, tone) },
+            actionableRecommendations = baseResponse.actionableRecommendations.map { 
+                transformRecommendationToFriendly(it, tone) 
+            },
+            followUpQuestions = addWarmthToQuestions(baseResponse.followUpQuestions),
+            celebrationElements = celebrationElements,
+            emojis = emojis,
+            encouragementLevel = determineEncouragementLevel(baseResponse.confidence, tone)
+        )
+    }
+    
+    fun transformInsightToFriendly(insight: AIInsight, context: UserFinancialContext): FriendlyInsight {
+        val celebrationType = when (insight.type) {
+            AIInsightType.POSITIVE_BEHAVIOR -> CelebrationType.ENTHUSIASTIC
+            AIInsightType.GOAL_PROGRESS -> CelebrationType.MILESTONE_CELEBRATION
+            AIInsightType.SAVINGS_OPPORTUNITY -> CelebrationType.GENTLE_PRAISE
+            else -> CelebrationType.GENTLE_PRAISE
+        }
+        
+        return FriendlyInsight(
+            id = insight.id,
+            title = addExcitementToTitle(insight.title),
+            message = addWarmthToMessage(insight.description, context.userName, ConversationTone.ENCOURAGING),
+            tone = ConversationTone.ENCOURAGING,
+            celebrationLevel = celebrationType,
+            supportingData = insight.supportingData.map { transformDataPointToFriendly(it, ConversationTone.ENCOURAGING) },
+            actionableSteps = insight.actionableSteps.map { addEncouragementToStep(it) },
+            potentialSavings = insight.potentialSavings,
+            encouragingContext = generateEncouragingContext(insight),
+            emojis = selectInsightEmojis(insight.type)
+        )
+    }
+    
+    fun transformSpendingAnalysisToFriendly(
+        analysis: SpendingAnalysis,
+        category: String,
+        timeframe: DateRange,
+        context: UserFinancialContext
+    ): FriendlySpendingAnalysis {
+        val positiveHighlights = findPositiveSpendingHighlights(analysis)
+        val gentleGuidance = generateGentleSpendingGuidance(analysis)
+        
+        return FriendlySpendingAnalysis(
+            category = category,
+            timeframe = timeframe,
+            friendlyMessage = createFriendlySpendingMessage(analysis, context.userName),
+            tone = ConversationTone.SUPPORTIVE,
+            positiveHighlights = positiveHighlights,
+            gentleGuidance = gentleGuidance,
+            celebrationElements = generateSpendingCelebrationElements(analysis),
+            supportingData = analysis.categoryBreakdown.take(3).map { 
+                FriendlyDataPoint(
+                    label = it.category.name,
+                    value = it.totalAmount.format(),
+                    friendlyExplanation = "You spent this amount on ${it.category.name.lowercase()}",
+                    encouragingContext = generateCategoryEncouragement(it),
+                    emoji = getCategoryEmoji(it.category.name)
+                )
+            },
+            encouragingComparison = generateEncouragingComparison(analysis)
+        )
+    }
+    
+    fun transformAffordabilityToFriendly(
+        result: AffordabilityResult,
+        expense: ExpenseRequest,
+        context: UserFinancialContext
+    ): FriendlyAffordabilityResult {
+        val tone = if (result.canAfford) ConversationTone.CELEBRATORY else ConversationTone.SUPPORTIVE
+        val celebrationType = if (result.canAfford) CelebrationType.ENTHUSIASTIC else CelebrationType.GENTLE_PRAISE
+        
+        return FriendlyAffordabilityResult(
+            canAfford = result.canAfford,
+            encouragingMessage = createEncouragingAffordabilityMessage(result, expense, context.userName),
+            supportiveReasoning = addWarmthToReasoning(result.reasoning),
+            impactOnGoals = transformGoalImpactToFriendly(result.impactOnGoals),
+            alternativeOptions = result.alternativeOptions.map { transformAlternativeToFriendly(it) },
+            celebrationLevel = celebrationType,
+            tone = tone,
+            motivationalContext = generateMotivationalContext(result, expense),
+            emojis = if (result.canAfford) listOf("🎉", "✅", "💪") else listOf("💭", "🤔", "💡")
+        )
+    }
+    
+    fun transformTransactionExplanationToFriendly(
+        explanation: TransactionExplanation,
+        context: UserFinancialContext
+    ): FriendlyTransactionExplanation {
+        return FriendlyTransactionExplanation(
+            transactionId = explanation.transactionId,
+            detectiveStory = createDetectiveStory(explanation, context.userName),
+            friendlyContext = addWarmthToMessage(explanation.spendingPatternContext, context.userName, ConversationTone.CARING),
+            positiveSpins = findPositiveSpins(explanation),
+            insightfulObservations = explanation.recommendations.map { addInsightfulTone(it) },
+            celebrationElements = generateTransactionCelebrationElements(explanation),
+            relatedFindings = explanation.relatedTransactions.map { "Found a similar transaction: ${it.description}" },
+            encouragingConclusion = generateEncouragingConclusion(explanation),
+            emojis = listOf("🔍", "💡", "📊")
+        )
+    }
+    
+    fun transformOptimizationToFriendly(
+        optimization: OptimizationSuggestion,
+        context: UserFinancialContext
+    ): FriendlyOptimizationSuggestion {
+        return FriendlyOptimizationSuggestion(
+            id = optimization.id,
+            title = addExcitementToTitle(optimization.title),
+            friendlyDescription = addWarmthToMessage(optimization.description, context.userName, ConversationTone.EXCITED),
+            potentialSavings = optimization.potentialSavings,
+            motivationalMessage = generateMotivationalMessage(optimization),
+            easySteps = optimization.steps.map { makeStepEasier(it) },
+            celebrationPotential = CelebrationType.ACHIEVEMENT_PARTY,
+            encouragingContext = generateOptimizationEncouragement(optimization),
+            tone = ConversationTone.EXCITED,
+            emojis = listOf("💰", "🚀", "✨")
+        )
+    }
+    
+    // Helper methods for message transformation
+    
+    private fun addWarmthToMessage(message: String, userName: String, tone: ConversationTone): String {
+        val warmPrefixes = when (tone) {
+            ConversationTone.ENCOURAGING -> listOf("Great question, $userName!", "I'm excited to help you with this!", "You're on the right track!")
+            ConversationTone.CELEBRATORY -> listOf("Amazing, $userName!", "This is fantastic news!", "You're absolutely crushing it!")
+            ConversationTone.SUPPORTIVE -> listOf("I'm here to help, $userName!", "Let's figure this out together!", "No worries, we've got this!")
+            ConversationTone.GENTLE_GUIDANCE -> listOf("Let me help you think through this, $userName.", "Here's what I'm seeing...", "Let's explore this together.")
+            ConversationTone.EXCITED -> listOf("Oh, this is exciting, $userName!", "I love helping with this!", "This is going to be great!")
+            ConversationTone.CARING -> listOf("I understand, $userName.", "Let me help you with this.", "You're doing great, and here's what I see...")
+            ConversationTone.ENTHUSIASTIC -> listOf("This is awesome, $userName!", "I'm so excited to share this!", "You're going to love this!")
+            ConversationTone.WARM_FRIENDLY -> listOf("Hey $userName!", "Hope you're having a great day!", "Let's dive into this together!")
+        }
+        
+        val prefix = warmPrefixes.random()
+        return "$prefix $message"
+    }
+    
+    private fun addExcitementToTitle(title: String): String {
+        val excitingPrefixes = listOf("Amazing", "Fantastic", "Great", "Wonderful", "Excellent")
+        return "${excitingPrefixes.random()} $title"
+    }
+    
+    private fun addEncouragementToStep(step: String): String {
+        val encouragingPrefixes = listOf("You can easily", "Simply", "Just", "All you need to do is")
+        return "${encouragingPrefixes.random()} ${step.lowercase()}"
+    }
+    
+    private fun selectAppropriateEmojis(tone: ConversationTone, confidence: Float): List<String> {
+        val baseEmojis = when (tone) {
+            ConversationTone.ENCOURAGING -> listOf("💪", "🌟", "👍")
+            ConversationTone.CELEBRATORY -> listOf("🎉", "🎊", "✨", "🏆")
+            ConversationTone.SUPPORTIVE -> listOf("🤗", "💙", "🌈")
+            ConversationTone.GENTLE_GUIDANCE -> listOf("💭", "🤔", "💡")
+            ConversationTone.EXCITED -> listOf("🚀", "⚡", "🔥")
+            ConversationTone.CARING -> listOf("💝", "🌸", "☀️")
+            ConversationTone.ENTHUSIASTIC -> listOf("🎯", "💫", "🌟")
+            ConversationTone.WARM_FRIENDLY -> listOf("😊", "👋", "💛")
+        }
+        
+        return if (confidence > 0.8f) baseEmojis else baseEmojis.take(2)
+    }
+    
+    private fun generateCelebrationElements(response: AIResponse, tone: ConversationTone): List<CelebrationElement> {
+        val elements = mutableListOf<CelebrationElement>()
+        
+        if (response.confidence > 0.8f) {
+            elements.add(CelebrationElement(
+                type = CelebrationElementType.ENCOURAGING_TEXT,
+                content = "You're doing great!",
+                intensity = CelebrationIntensity.MODERATE
+            ))
+        }
+        
+        if (tone == ConversationTone.CELEBRATORY) {
+            elements.add(CelebrationElement(
+                type = CelebrationElementType.CONFETTI,
+                content = "🎊",
+                intensity = CelebrationIntensity.ENTHUSIASTIC
+            ))
+        }
+        
+        return elements
+    }
+    
+    private fun transformDataPointToFriendly(dataPoint: DataPoint, tone: ConversationTone): FriendlyDataPoint {
+        return FriendlyDataPoint(
+            label = dataPoint.label,
+            value = dataPoint.value,
+            friendlyExplanation = addWarmthToExplanation(dataPoint.description),
+            encouragingContext = generateDataPointEncouragement(dataPoint),
+            emoji = getDataPointEmoji(dataPoint.label)
+        )
+    }
+    
+    private fun transformRecommendationToFriendly(recommendation: Recommendation, tone: ConversationTone): FriendlyRecommendation {
+        return FriendlyRecommendation(
+            id = recommendation.id,
+            title = addExcitementToTitle(recommendation.title),
+            friendlyDescription = addWarmthToMessage(recommendation.description, "", tone),
+            motivationalReason = generateMotivationalReason(recommendation),
+            easyActionText = makeActionEasier(recommendation.actionText),
+            celebrationPotential = CelebrationType.GENTLE_PRAISE,
+            supportiveContext = generateSupportiveContext(recommendation),
+            emoji = getRecommendationEmoji(recommendation.type)
+        )
+    }
+    
+    // Additional helper methods would continue here...
+    // For brevity, I'll include key methods that demonstrate the pattern
+    
+    private fun addWarmthToQuestions(questions: List<String>): List<String> {
+        return questions.map { question ->
+            val warmPrefixes = listOf("I'm curious,", "What do you think about", "How about we explore")
+            "${warmPrefixes.random()} ${question.lowercase()}"
+        }
+    }
+    
+    private fun determineEncouragementLevel(confidence: Float, tone: ConversationTone): EncouragementLevel {
+        return when {
+            confidence > 0.9f && tone == ConversationTone.CELEBRATORY -> EncouragementLevel.CELEBRATORY
+            confidence > 0.8f -> EncouragementLevel.HIGHLY_MOTIVATING
+            confidence > 0.6f -> EncouragementLevel.ENCOURAGING
+            else -> EncouragementLevel.SUPPORTIVE
+        }
+    }
+    
+    private fun getCategoryEmoji(categoryName: String): String {
+        return when (categoryName.lowercase()) {
+            "food", "dining", "restaurants" -> "🍽️"
+            "transportation", "gas", "fuel" -> "🚗"
+            "entertainment" -> "🎬"
+            "shopping" -> "🛍️"
+            "utilities" -> "🏠"
+            "healthcare" -> "🏥"
+            else -> "💰"
+        }
+    }
+    
+    private fun getDataPointEmoji(label: String): String {
+        return when (label.lowercase()) {
+            "budget impact", "budget" -> "📊"
+            "goal impact", "goal" -> "🎯"
+            "savings" -> "💰"
+            "spending" -> "💳"
+            else -> "📈"
+        }
+    }
+    
+    private fun getRecommendationEmoji(type: RecommendationType): String {
+        return when (type) {
+            RecommendationType.BUDGET_ADJUSTMENT -> "📊"
+            RecommendationType.GOAL_ADJUSTMENT -> "🎯"
+            RecommendationType.SAVINGS_OPPORTUNITY -> "💰"
+            RecommendationType.SPENDING_REDUCTION -> "✂️"
+        }
+    }
+    
+    // Placeholder implementations for remaining methods
+    private fun generateEncouragingContext(insight: AIInsight) = "This insight shows you're making great progress!"
+    private fun selectInsightEmojis(type: AIInsightType) = listOf("✨", "💡", "🌟")
+    private fun findPositiveSpendingHighlights(analysis: SpendingAnalysis) = listOf("You're staying mindful of your spending!")
+    private fun generateGentleSpendingGuidance(analysis: SpendingAnalysis) = listOf("Consider tracking this category more closely")
+    private fun createFriendlySpendingMessage(analysis: SpendingAnalysis, userName: String) = "Great job tracking your spending, $userName!"
+    private fun generateSpendingCelebrationElements(analysis: SpendingAnalysis) = emptyList<CelebrationElement>()
+    private fun generateCategoryEncouragement(categorySpending: CategorySpending) = "You're being mindful with this category!"
+    private fun generateEncouragingComparison(analysis: SpendingAnalysis) = "You're doing better than last month!"
+    private fun createEncouragingAffordabilityMessage(result: AffordabilityResult, expense: ExpenseRequest, userName: String) = 
+        if (result.canAfford) "Great news, $userName! You can afford this!" else "Let's explore some options together, $userName!"
+    private fun addWarmthToReasoning(reasoning: String) = "Here's what I'm seeing: $reasoning"
+    private fun transformGoalImpactToFriendly(impact: GoalImpactAnalysis) = FriendlyGoalImpactAnalysis(
+        affectedGoals = emptyList(),
+        encouragingMessage = "Your goals are still achievable!",
+        positiveFraming = "This is just a small adjustment",
+        alternativeStrategies = emptyList(),
+        motivationalContext = "You've got this!",
+        celebrationOpportunities = emptyList()
+    )
+    private fun transformAlternativeToFriendly(alternative: Alternative) = FriendlyAlternative(
+        description = alternative.description,
+        amount = alternative.amount,
+        friendlyPros = alternative.pros,
+        gentleCons = alternative.cons.map { "Something to consider: $it" },
+        encouragingMessage = "This could be a great option!",
+        emoji = "💡"
+    )
+    private fun generateMotivationalContext(result: AffordabilityResult, expense: ExpenseRequest) = "Every financial decision is a step forward!"
+    private fun createDetectiveStory(explanation: TransactionExplanation, userName: String) = 
+        "Let me tell you the story behind this transaction, $userName..."
+    private fun findPositiveSpins(explanation: TransactionExplanation) = listOf("This shows you're actively managing your finances!")
+    private fun addInsightfulTone(recommendation: String) = "Here's an interesting observation: $recommendation"
+    private fun generateTransactionCelebrationElements(explanation: TransactionExplanation) = emptyList<CelebrationElement>()
+    private fun generateEncouragingConclusion(explanation: TransactionExplanation) = "You're doing great at tracking your spending!"
+    private fun generateMotivationalMessage(optimization: OptimizationSuggestion) = "This optimization could be a game-changer!"
+    private fun makeStepEasier(step: String) = "Simply $step"
+    private fun generateOptimizationEncouragement(optimization: OptimizationSuggestion) = "You're going to love the results!"
+    private fun addWarmthToExplanation(description: String) = "This means: $description"
+    private fun generateDataPointEncouragement(dataPoint: DataPoint) = "This is a positive indicator!"
+    private fun generateMotivationalReason(recommendation: Recommendation) = "This will help you reach your goals faster!"
+    private fun makeActionEasier(actionText: String) = "You can easily $actionText"
+    private fun generateSupportiveContext(recommendation: Recommendation) = "I'm here to support you through this!"
+}
+
+/**
+ * Helper class for managing celebrations
+ */
+private class CelebrationManager {
+    
+    fun createCelebrationMessage(achievement: Achievement, context: UserFinancialContext): CelebrationMessage {
+        val enthusiasmLevel = determineEnthusiasmLevel(achievement)
+        val celebrationElements = generateCelebrationElements(achievement, enthusiasmLevel)
+        
+        return CelebrationMessage(
+            message = createCelebratoryMessage(achievement, context.userName),
+            enthusiasmLevel = enthusiasmLevel,
+            celebrationElements = celebrationElements,
+            personalizedPraise = generatePersonalizedPraise(achievement, context),
+            nextStepEncouragement = generateNextStepEncouragement(achievement),
+            emojis = selectCelebrationEmojis(enthusiasmLevel),
+            tone = ConversationTone.CELEBRATORY
+        )
+    }
+    
+    private fun determineEnthusiasmLevel(achievement: Achievement): CelebrationType {
+        return when (achievement.type) {
+            AchievementType.GOAL_MILESTONE -> CelebrationType.MILESTONE_CELEBRATION
+            AchievementType.STREAK_ACHIEVEMENT -> CelebrationType.ACHIEVEMENT_PARTY
+            AchievementType.SAVINGS_MILESTONE -> CelebrationType.ENTHUSIASTIC
+            else -> CelebrationType.GENTLE_PRAISE
+        }
+    }
+    
+    private fun generateCelebrationElements(achievement: Achievement, level: CelebrationType): List<CelebrationElement> {
+        return when (level) {
+            CelebrationType.ACHIEVEMENT_PARTY -> listOf(
+                CelebrationElement(CelebrationElementType.CONFETTI, "🎊", CelebrationIntensity.EXPLOSIVE),
+                CelebrationElement(CelebrationElementType.EMOJI_BURST, "🎉✨🏆", CelebrationIntensity.ENTHUSIASTIC)
+            )
+            CelebrationType.MILESTONE_CELEBRATION -> listOf(
+                CelebrationElement(CelebrationElementType.MILESTONE_MARKER, "🏆", CelebrationIntensity.ENTHUSIASTIC),
+                CelebrationElement(CelebrationElementType.PROGRESS_ANIMATION, "📈", CelebrationIntensity.MODERATE)
+            )
+            else -> listOf(
+                CelebrationElement(CelebrationElementType.ENCOURAGING_TEXT, "Great job!", CelebrationIntensity.MODERATE)
+            )
+        }
+    }
+    
+    private fun createCelebratoryMessage(achievement: Achievement, userName: String): String {
+        return when (achievement.type) {
+            AchievementType.GOAL_MILESTONE -> "🎉 Incredible work, $userName! You've hit a major milestone!"
+            AchievementType.STREAK_ACHIEVEMENT -> "🔥 Amazing streak, $userName! You're on fire!"
+            AchievementType.SAVINGS_MILESTONE -> "💰 Fantastic savings achievement, $userName! You're building wealth!"
+            else -> "🌟 Great job, $userName! Every step counts!"
+        }
+    }
+    
+    private fun generatePersonalizedPraise(achievement: Achievement, context: UserFinancialContext): String {
+        return "Your dedication to ${achievement.title} shows real financial wisdom, ${context.userName}!"
+    }
+    
+    private fun generateNextStepEncouragement(achievement: Achievement): String {
+        return "Keep up this momentum - you're building amazing financial habits!"
+    }
+    
+    private fun selectCelebrationEmojis(level: CelebrationType): List<String> {
+        return when (level) {
+            CelebrationType.ACHIEVEMENT_PARTY -> listOf("🎉", "🎊", "🏆", "✨", "🌟")
+            CelebrationType.MILESTONE_CELEBRATION -> listOf("🏆", "📈", "💪", "🎯")
+            CelebrationType.ENTHUSIASTIC -> listOf("🌟", "✨", "👏", "💫")
+            else -> listOf("👍", "😊", "💛")
+        }
+    }
+}
+
+/**
+ * Helper class for personalizing conversations
+ */
+private class ConversationPersonalizer {
+    // Implementation for personalizing conversations based on user context
+    // This would include methods for adapting tone, content, and suggestions
+    // based on user preferences, history, and current financial situation
+}
+
+// Helper data classes
+private data class BudgetStatus(
+    val isOnTrack: Boolean,
+    val percentageUsed: Double,
+    val overBudgetCategories: Int
+)

@@ -1,0 +1,48 @@
+package com.north.mobile.ui.chat.model
+
+/**
+ * Represents a conversation starter prompt
+ */
+data class ConversationStarter(
+    val id: String,
+    val text: String,
+    val category: ConversationCategory,
+    val emoji: String,
+    val priority: Int = 0
+)
+
+/**
+ * Default conversation starters for the chat
+ */
+fun getDefaultConversationStarters(): List<ConversationStarter> {
+    return listOf(
+        ConversationStarter(
+            id = "welcome_1",
+            text = "I'm new to managing my money. Where should I start?",
+            category = ConversationCategory.GREETING,
+            emoji = "👋",
+            priority = 1
+        ),
+        ConversationStarter(
+            id = "spending_1",
+            text = "Where is all my money going?",
+            category = ConversationCategory.SPENDING_INSIGHTS,
+            emoji = "💸",
+            priority = 2
+        ),
+        ConversationStarter(
+            id = "savings_1",
+            text = "How can I save more money?",
+            category = ConversationCategory.SAVINGS_ADVICE,
+            emoji = "💰",
+            priority = 2
+        ),
+        ConversationStarter(
+            id = "goal_1",
+            text = "I want to set a financial goal",
+            category = ConversationCategory.GOAL_CREATION,
+            emoji = "🎯",
+            priority = 1
+        )
+    )
+}

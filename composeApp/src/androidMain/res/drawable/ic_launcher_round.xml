@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Circular background with gradient -->
+    <path
+        android:pathData="M54,54m-54,0a54,54 0,1 1,108 0a54,54 0,1 1,-108 0">
+        <aapt:attr name="android:fillColor" xmlns:aapt="http://schemas.android.com/aapt">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="54"
+                android:startColor="#4F46E5"
+                android:endColor="#2563EB" />
+        </aapt:attr>
+    </path>
+    
+    <!-- North star/diamond shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,25 L70,54 L54,83 L38,54 Z" />
+    
+    <!-- Subtle inner highlight -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M54,33 L62,54 L54,75 L46,54 Z" />
+        
+</vector>

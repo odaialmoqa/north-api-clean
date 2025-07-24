@@ -1,0 +1,472 @@
+package com.north.mobile.data.ai
+
+import kotlinx.coroutines.delay
+
+/**
+ * AI CFO Onboarding Service that creates personalized financial coaching through conversation
+ */
+class AICFOOnboardingService {
+    
+    private var currentOnboardingStep = OnboardingStep.WELCOME
+    private var userContext = mutableMapOf<String, Any>()
+    
+    /**
+     * Start the onboarding conversation with a warm welcome
+     */
+    suspend fun startOnboardingConversation(userName: String): FriendlyAIResponse {
+        currentOnboardingStep = OnboardingStep.WELCOME
+        userContext["userName"] = userName
+        
+        return FriendlyAIResponse(
+            message = "Hey $userName! 👋 I'm so excited to be your personal CFO! Think of me as that supportive friend who's always in your corner, helping you make smart money decisions and cheering you on every step of the way.\n\nI'd love to get to know you better so I can create a personalized financial plan that actually fits YOUR life. No boring forms - just a friendly chat! 😊\n\nWhat brings you here today? Are you looking to save for something special, get better at budgeting, or maybe just want to feel more confident about your finances?",
+            tone = ConversationTone.WARM_FRIENDLY,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "Tell me about your biggest financial goal right now",
+                "What's your biggest money worry?",
+                "I want to save for something specific",
+                "Help me understand my spending better"
+            ),
+            celebrationElements = listOf(
+                CelebrationElement(
+                    type = CelebrationElementType.EMOJI_BURST,
+                    content = "🌟✨💫",
+                    intensity = CelebrationIntensity.MODERATE
+                )
+            ),
+            emojis = listOf("💝", "🚀", "✨"),
+            encouragementLevel = EncouragementLevel.ENCOURAGING
+        )
+    }
+    
+    /**
+     * Process user responses during onboarding to build their profile
+     */
+    suspend fun processOnboardingResponse(
+        userMessage: String,
+        currentContext: Map<String, Any> = emptyMap()
+    ): FriendlyAIResponse {
+        // Update context with current conversation
+        userContext.putAll(currentContext)
+        
+        // Analyze the user's response to understand their needs
+        val responseAnalysis = analyzeUserResponse(userMessage)
+        
+        return when (currentOnboardingStep) {
+            OnboardingStep.WELCOME -> handleWelcomeResponse(userMessage, responseAnalysis)
+            OnboardingStep.GOALS_DISCOVERY -> handleGoalsDiscovery(userMessage, responseAnalysis)
+            OnboardingStep.LIFESTYLE_LEARNING -> handleLifestyleLearning(userMessage, responseAnalysis)
+            OnboardingStep.FINANCIAL_SITUATION -> handleFinancialSituation(userMessage, responseAnalysis)
+            OnboardingStep.PRIORITIES_SETTING -> handlePrioritiesSetting(userMessage, responseAnalysis)
+            OnboardingStep.GOAL_CREATION -> handleGoalCreation(userMessage, responseAnalysis)
+            OnboardingStep.COMPLETED -> handleOngoingConversation(userMessage, responseAnalysis)
+        }
+    }
+    
+    private suspend fun handleWelcomeResponse(
+        userMessage: String,
+        analysis: ResponseAnalysis
+    ): FriendlyAIResponse {
+        currentOnboardingStep = OnboardingStep.GOALS_DISCOVERY
+        
+        val response = when {
+            analysis.mentionsSaving -> {
+                userContext["primaryInterest"] = "saving"
+                "That's awesome! Saving is such a smart move and I'm here to help you crush those savings goals! 💪\n\nTell me more about what you're saving for - is it something exciting like a vacation, a new car, or maybe building up that emergency fund? I love hearing about people's dreams and goals!"
+            }
+            analysis.mentionsBudgeting -> {
+                userContext["primaryInterest"] = "budgeting"
+                "Yes! Getting a handle on your budget is like giving yourself a superpower! 🦸‍♀️ Once you know where your money's going, you can make it work so much better for you.\n\nWhat's your biggest challenge with budgeting right now? Is it tracking expenses, sticking to limits, or maybe just figuring out where to start?"
+            }
+            analysis.mentionsWorries -> {
+                userContext["primaryInterest"] = "financial_anxiety"
+                "I totally get that - money stuff can feel overwhelming sometimes, but you're taking such a positive step by wanting to tackle it! 🤗\n\nWhat's been weighing on your mind the most? Is it not having enough saved, spending too much, or maybe just feeling like you don't know if you're on the right track?"
+            }
+            else -> {
+                userContext["primaryInterest"] = "general"
+                "I love that you're thinking about your financial future! That's already putting you ahead of so many people. 🌟\n\nLet's start with what matters most to you right now - what would make you feel really good about your money situation? Maybe having more saved up, spending less on certain things, or just feeling more in control?"
+            }
+        }
+        
+        return FriendlyAIResponse(
+            message = response,
+            tone = ConversationTone.ENCOURAGING,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "I want to save for a big purchase",
+                "I need help with monthly budgeting",
+                "I want to build an emergency fund",
+                "I'm worried about my spending habits"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("💡", "🎯", "✨"),
+            encouragementLevel = EncouragementLevel.SUPPORTIVE
+        )
+    }
+    
+    private suspend fun handleGoalsDiscovery(
+        userMessage: String,
+        analysis: ResponseAnalysis
+    ): FriendlyAIResponse {
+        currentOnboardingStep = OnboardingStep.LIFESTYLE_LEARNING
+        
+        // Extract goal information from user's response
+        val goalInfo = extractGoalInformation(userMessage, analysis)
+        userContext["discoveredGoals"] = goalInfo
+        
+        val response = when {
+            goalInfo.isNotEmpty() -> {
+                val goalText = goalInfo.joinToString(", ")
+                "Oh wow, $goalText - that sounds amazing! 🤩 I'm already getting excited thinking about how great it'll feel when you achieve that!\n\nNow, to help me create the perfect plan for you, tell me a bit about your lifestyle. Are you someone who loves going out with friends, prefers cozy nights in, or maybe you're all about those weekend adventures? Understanding how you like to live helps me suggest realistic ways to reach your goals without giving up the things you love!"
+            }
+            else -> {
+                "That's totally okay - sometimes it takes a bit of chatting to figure out what we really want! 😊\n\nLet me ask this differently: if you could wave a magic wand and fix one thing about your money situation, what would it be? Maybe you'd have more saved up, spend less on takeout, or just feel less stressed about finances in general?"
+            }
+        }
+        
+        return FriendlyAIResponse(
+            message = response,
+            tone = ConversationTone.ENTHUSIASTIC,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "I love dining out and social activities",
+                "I'm more of a homebody who likes simple pleasures",
+                "I enjoy travel and experiences",
+                "I prefer saving over spending on extras"
+            ),
+            celebrationElements = listOf(
+                CelebrationElement(
+                    type = CelebrationElementType.ENCOURAGING_TEXT,
+                    content = "You're doing great! This info helps me understand you better! 🌟",
+                    intensity = CelebrationIntensity.SUBTLE
+                )
+            ),
+            emojis = listOf("🎯", "💫", "🚀"),
+            encouragementLevel = EncouragementLevel.ENCOURAGING
+        )
+    }
+    
+    private suspend fun handleLifestyleLearning(
+        userMessage: String,
+        analysis: ResponseAnalysis
+    ): FriendlyAIResponse {
+        currentOnboardingStep = OnboardingStep.FINANCIAL_SITUATION
+        
+        val lifestyleInfo = extractLifestyleInformation(userMessage, analysis)
+        userContext["lifestyle"] = lifestyleInfo
+        
+        val response = "Perfect! I'm getting such a good picture of who you are and what matters to you! 😊\n\nNow, without getting too personal, could you give me a rough idea of your financial situation? I'm not looking for exact numbers - just want to understand if you're:\n\n• Just starting out and building from scratch 🌱\n• Doing okay but want to optimize and grow 📈\n• Pretty comfortable but looking for next-level strategies 🚀\n\nThis helps me give you advice that actually makes sense for where you're at right now!"
+        
+        return FriendlyAIResponse(
+            message = response,
+            tone = ConversationTone.CARING,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "I'm just starting out with my finances",
+                "I'm doing okay but want to improve",
+                "I'm comfortable but want to optimize",
+                "I'd rather not share specifics right now"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("💭", "📊", "🎯"),
+            encouragementLevel = EncouragementLevel.SUPPORTIVE
+        )
+    }
+    
+    private suspend fun handleFinancialSituation(
+        userMessage: String,
+        analysis: ResponseAnalysis
+    ): FriendlyAIResponse {
+        currentOnboardingStep = OnboardingStep.PRIORITIES_SETTING
+        
+        val financialLevel = extractFinancialLevel(userMessage, analysis)
+        userContext["financialLevel"] = financialLevel
+        
+        val response = when (financialLevel) {
+            "starting_out" -> "You know what? Starting out is actually the BEST time to build great money habits! 🌟 You're setting yourself up for such an amazing financial future.\n\nWhat would you say is your top priority right now? Building that first emergency fund, getting better at tracking spending, or maybe setting up your first savings goal?"
+            "doing_okay" -> "That's fantastic that you're being proactive about improving! That mindset is going to take you so far! 💪\n\nSince you're already on solid ground, what's the next level you want to reach? Maybe boosting your savings rate, optimizing your spending, or working toward a bigger financial goal?"
+            "comfortable" -> "Wow, you're in such a great position! I love that you're not just settling but looking to optimize even more! 🚀\n\nFor someone at your level, what would feel like a meaningful win? Maybe maximizing investment returns, fine-tuning your budget efficiency, or planning for some bigger life goals?"
+            else -> "No worries at all - we can work with whatever you're comfortable sharing! 🤗\n\nLet's focus on what you'd like to improve. What would make you feel really good about your financial progress in the next few months?"
+        }
+        
+        return FriendlyAIResponse(
+            message = response,
+            tone = ConversationTone.ENCOURAGING,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "Build my emergency fund",
+                "Save for a specific goal",
+                "Reduce unnecessary spending",
+                "Optimize my current savings"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("🎯", "💡", "✨"),
+            encouragementLevel = EncouragementLevel.ENCOURAGING
+        )
+    }
+    
+    private suspend fun handlePrioritiesSetting(
+        userMessage: String,
+        analysis: ResponseAnalysis
+    ): FriendlyAIResponse {
+        currentOnboardingStep = OnboardingStep.GOAL_CREATION
+        
+        val priorities = extractPriorities(userMessage, analysis)
+        userContext["priorities"] = priorities
+        
+        val response = "This is SO helpful! I feel like I really understand what you're looking for now! 🤩\n\nBased on everything you've told me - your goals, lifestyle, and priorities - I'm already thinking of some personalized strategies that could work really well for you!\n\nWould you like me to create some specific, achievable goals that fit your situation? I can make them realistic but exciting, so you'll actually want to work toward them! What do you think?"
+        
+        return FriendlyAIResponse(
+            message = response,
+            tone = ConversationTone.EXCITED,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "Yes, create some goals for me!",
+                "I'd like to see what you suggest",
+                "Let's start with one main goal",
+                "Tell me more about your approach first"
+            ),
+            celebrationElements = listOf(
+                CelebrationElement(
+                    type = CelebrationElementType.EMOJI_BURST,
+                    content = "🎉✨🎯",
+                    intensity = CelebrationIntensity.MODERATE
+                )
+            ),
+            emojis = listOf("🚀", "💫", "🎯"),
+            encouragementLevel = EncouragementLevel.HIGHLY_MOTIVATING
+        )
+    }
+    
+    private suspend fun handleGoalCreation(
+        userMessage: String,
+        analysis: ResponseAnalysis
+    ): FriendlyAIResponse {
+        currentOnboardingStep = OnboardingStep.COMPLETED
+        
+        // Generate personalized goals based on collected context
+        val generatedGoals = generatePersonalizedGoals()
+        
+        val response = "🎉 Okay, I've created some personalized goals just for you! These are based on everything you've shared with me:\n\n${formatGeneratedGoals(generatedGoals)}\n\nHow do these look? I made them specific enough to be actionable but flexible enough to fit your lifestyle. We can adjust anything that doesn't feel quite right!\n\nAnd remember - I'm here to cheer you on every step of the way! 💪✨"
+        
+        return FriendlyAIResponse(
+            message = response,
+            tone = ConversationTone.CELEBRATORY,
+            supportingData = emptyList(),
+            actionableRecommendations = generatedGoals.map { goal ->
+                FriendlyRecommendation(
+                    id = goal.id,
+                    title = goal.title,
+                    friendlyDescription = goal.description,
+                    motivationalReason = goal.reasoning,
+                    easyActionText = "Start working on this goal",
+                    celebrationPotential = CelebrationType.MILESTONE_CELEBRATION,
+                    supportiveContext = "This goal is perfectly tailored to your situation!",
+                    emoji = goal.emoji
+                )
+            },
+            followUpQuestions = listOf(
+                "These look perfect!",
+                "Can we adjust one of these?",
+                "Add another goal",
+                "How do I get started?"
+            ),
+            celebrationElements = listOf(
+                CelebrationElement(
+                    type = CelebrationElementType.CONFETTI,
+                    content = "🎊🎉✨",
+                    intensity = CelebrationIntensity.ENTHUSIASTIC
+                ),
+                CelebrationElement(
+                    type = CelebrationElementType.ENCOURAGING_TEXT,
+                    content = "Your personalized financial plan is ready! 🌟",
+                    intensity = CelebrationIntensity.MODERATE
+                )
+            ),
+            emojis = listOf("🎯", "🚀", "💫", "🎉"),
+            encouragementLevel = EncouragementLevel.CELEBRATORY
+        )
+    }
+    
+    private suspend fun handleOngoingConversation(
+        userMessage: String,
+        analysis: ResponseAnalysis
+    ): FriendlyAIResponse {
+        // Handle regular conversation after onboarding is complete
+        return FriendlyAIResponse(
+            message = "Thanks for sharing that with me! I'm always here to help you with your financial journey. What would you like to talk about today? 😊",
+            tone = ConversationTone.WARM_FRIENDLY,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "Check my goal progress",
+                "Help me with a purchase decision",
+                "Review my spending",
+                "Celebrate an achievement"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("💬", "🤗"),
+            encouragementLevel = EncouragementLevel.SUPPORTIVE
+        )
+    }
+    
+    // Helper functions for analysis and goal generation
+    
+    private fun analyzeUserResponse(message: String): ResponseAnalysis {
+        val lowerMessage = message.lowercase()
+        return ResponseAnalysis(
+            mentionsSaving = lowerMessage.contains("save") || lowerMessage.contains("saving"),
+            mentionsBudgeting = lowerMessage.contains("budget") || lowerMessage.contains("spending"),
+            mentionsWorries = lowerMessage.contains("worry") || lowerMessage.contains("stress") || lowerMessage.contains("anxious"),
+            mentionsGoals = lowerMessage.contains("goal") || lowerMessage.contains("want to"),
+            mentionsLifestyle = lowerMessage.contains("like") || lowerMessage.contains("enjoy") || lowerMessage.contains("love"),
+            sentiment = if (lowerMessage.contains("excited") || lowerMessage.contains("great")) "positive" else "neutral"
+        )
+    }
+    
+    private fun extractGoalInformation(message: String, analysis: ResponseAnalysis): List<String> {
+        val goals = mutableListOf<String>()
+        val lowerMessage = message.lowercase()
+        
+        when {
+            lowerMessage.contains("vacation") || lowerMessage.contains("travel") -> goals.add("vacation/travel")
+            lowerMessage.contains("car") || lowerMessage.contains("vehicle") -> goals.add("vehicle purchase")
+            lowerMessage.contains("house") || lowerMessage.contains("home") -> goals.add("home purchase")
+            lowerMessage.contains("emergency") -> goals.add("emergency fund")
+            lowerMessage.contains("wedding") -> goals.add("wedding")
+            lowerMessage.contains("education") || lowerMessage.contains("school") -> goals.add("education")
+        }
+        
+        return goals
+    }
+    
+    private fun extractLifestyleInformation(message: String, analysis: ResponseAnalysis): String {
+        val lowerMessage = message.lowercase()
+        return when {
+            lowerMessage.contains("dining") || lowerMessage.contains("social") || lowerMessage.contains("out") -> "social_active"
+            lowerMessage.contains("home") || lowerMessage.contains("simple") || lowerMessage.contains("cozy") -> "homebody"
+            lowerMessage.contains("travel") || lowerMessage.contains("adventure") || lowerMessage.contains("experience") -> "experience_focused"
+            lowerMessage.contains("saving") || lowerMessage.contains("frugal") -> "savings_focused"
+            else -> "balanced"
+        }
+    }
+    
+    private fun extractFinancialLevel(message: String, analysis: ResponseAnalysis): String {
+        val lowerMessage = message.lowercase()
+        return when {
+            lowerMessage.contains("starting") || lowerMessage.contains("beginning") || lowerMessage.contains("new") -> "starting_out"
+            lowerMessage.contains("okay") || lowerMessage.contains("improve") || lowerMessage.contains("better") -> "doing_okay"
+            lowerMessage.contains("comfortable") || lowerMessage.contains("optimize") || lowerMessage.contains("next level") -> "comfortable"
+            else -> "unspecified"
+        }
+    }
+    
+    private fun extractPriorities(message: String, analysis: ResponseAnalysis): List<String> {
+        val priorities = mutableListOf<String>()
+        val lowerMessage = message.lowercase()
+        
+        when {
+            lowerMessage.contains("emergency") -> priorities.add("emergency_fund")
+            lowerMessage.contains("save") && lowerMessage.contains("goal") -> priorities.add("specific_savings")
+            lowerMessage.contains("spending") || lowerMessage.contains("reduce") -> priorities.add("spending_optimization")
+            lowerMessage.contains("optimize") || lowerMessage.contains("maximize") -> priorities.add("optimization")
+        }
+        
+        return priorities
+    }
+    
+    private fun generatePersonalizedGoals(): List<GeneratedGoal> {
+        val goals = mutableListOf<GeneratedGoal>()
+        val userName = userContext["userName"] as? String ?: "Friend"
+        val priorities = userContext["priorities"] as? List<String> ?: emptyList()
+        val lifestyle = userContext["lifestyle"] as? String ?: "balanced"
+        val financialLevel = userContext["financialLevel"] as? String ?: "doing_okay"
+        
+        // Generate goals based on user context
+        if (priorities.contains("emergency_fund") || financialLevel == "starting_out") {
+            goals.add(
+                GeneratedGoal(
+                    id = "emergency_fund_${System.currentTimeMillis()}",
+                    title = "Build Your Safety Net",
+                    description = "Save $1,000 for emergencies over the next 3 months",
+                    reasoning = "Based on our chat, having that peace of mind with an emergency fund seems really important to you!",
+                    emoji = "🛡️"
+                )
+            )
+        }
+        
+        if (priorities.contains("specific_savings")) {
+            val discoveredGoals = userContext["discoveredGoals"] as? List<String> ?: emptyList()
+            if (discoveredGoals.isNotEmpty()) {
+                goals.add(
+                    GeneratedGoal(
+                        id = "specific_goal_${System.currentTimeMillis()}",
+                        title = "Save for ${discoveredGoals.first()}",
+                        description = "Set aside money each month to reach your ${discoveredGoals.first()} goal",
+                        reasoning = "You mentioned wanting to save for this, so let's make it happen!",
+                        emoji = "🎯"
+                    )
+                )
+            }
+        }
+        
+        if (priorities.contains("spending_optimization") || lifestyle == "social_active") {
+            goals.add(
+                GeneratedGoal(
+                    id = "spending_optimization_${System.currentTimeMillis()}",
+                    title = "Smart Spending Challenge",
+                    description = "Find $200 in monthly savings without giving up what you love",
+                    reasoning = "Since you enjoy ${if (lifestyle == "social_active") "going out and social activities" else "your current lifestyle"}, let's optimize without sacrificing fun!",
+                    emoji = "💡"
+                )
+            )
+        }
+        
+        return goals
+    }
+    
+    private fun formatGeneratedGoals(goals: List<GeneratedGoal>): String {
+        return goals.mapIndexed { index, goal ->
+            "${goal.emoji} **${goal.title}**\n   ${goal.description}\n   *${goal.reasoning}*"
+        }.joinToString("\n\n")
+    }
+    
+    fun getCurrentOnboardingStep(): OnboardingStep = currentOnboardingStep
+    fun getUserContext(): Map<String, Any> = userContext.toMap()
+    fun isOnboardingComplete(): Boolean = currentOnboardingStep == OnboardingStep.COMPLETED
+}
+
+// Data classes for onboarding
+
+enum class OnboardingStep {
+    WELCOME,
+    GOALS_DISCOVERY,
+    LIFESTYLE_LEARNING,
+    FINANCIAL_SITUATION,
+    PRIORITIES_SETTING,
+    GOAL_CREATION,
+    COMPLETED
+}
+
+data class ResponseAnalysis(
+    val mentionsSaving: Boolean,
+    val mentionsBudgeting: Boolean,
+    val mentionsWorries: Boolean,
+    val mentionsGoals: Boolean,
+    val mentionsLifestyle: Boolean,
+    val sentiment: String
+)
+
+data class GeneratedGoal(
+    val id: String,
+    val title: String,
+    val description: String,
+    val reasoning: String,
+    val emoji: String
+)

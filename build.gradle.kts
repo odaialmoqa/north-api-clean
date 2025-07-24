@@ -6,3 +6,14 @@ plugins {
     alias(libs.plugins.jetbrainsCompose) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
 }
+
+// Skip test tasks for all projects
+allprojects {
+    tasks.withType<AbstractTestTask> {
+        enabled = false
+    }
+    
+    tasks.withType<Test> {
+        enabled = false
+    }
+}

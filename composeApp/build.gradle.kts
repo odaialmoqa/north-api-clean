@@ -19,16 +19,17 @@ kotlin {
         }
     }
     
-    listOf(
-        iosX64(),
-        iosArm64(),
-        iosSimulatorArm64()
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
-        }
-    }
+    // Temporarily commenting out iOS targets to skip iOS builds
+    // listOf(
+    //     iosX64(),
+    //     iosArm64(),
+    //     iosSimulatorArm64()
+    // ).forEach { iosTarget ->
+    //     iosTarget.binaries.framework {
+    //         baseName = "ComposeApp"
+    //         isStatic = true
+    //     }
+    // }
     
     sourceSets {
         val androidMain by getting {
@@ -36,6 +37,9 @@ kotlin {
                 implementation("androidx.compose.ui:ui-tooling-preview:1.5.4")
                 implementation("androidx.activity:activity-compose:1.8.2")
                 implementation("androidx.navigation:navigation-compose:2.7.6")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+                implementation("androidx.compose.material:material-icons-extended:1.5.4")
+                implementation("com.plaid.link:sdk-core:3.10.1") // Plaid Android SDK
             }
         }
         val commonMain by getting {
@@ -46,8 +50,7 @@ kotlin {
                 implementation(compose.ui)
                 @OptIn(ExperimentalComposeLibrary::class)
                 implementation(compose.components.resources)
-                // Shared module disabled to avoid compilation errors
-                // implementation(project(":shared"))
+                implementation(project(":shared"))
             }
         }
     }

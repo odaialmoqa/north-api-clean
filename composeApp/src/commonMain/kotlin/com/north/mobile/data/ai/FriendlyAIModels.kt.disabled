@@ -1,0 +1,149 @@
+package com.north.mobile.data.ai
+
+// Using String for dates to avoid kotlinx.datetime dependency for now
+
+/**
+ * User's complete financial context for friendly AI processing
+ */
+data class UserFinancialContext(
+    val userId: String,
+    val userName: String,
+    val accounts: List<Account> = emptyList(),
+    val recentTransactions: List<Transaction> = emptyList(),
+    val goals: List<FinancialGoal> = emptyList(),
+    val budgets: List<Budget> = emptyList(),
+    val userPreferences: UserPreferences = UserPreferences(),
+    val recentAchievements: List<Achievement> = emptyList(),
+    val spendingAnalysis: SpendingAnalysis? = null,
+    val netWorth: NetWorthSummary? = null,
+    val gamificationProfile: GamificationProfile? = null
+)
+
+/**
+ * Friendly AI response with warm, caring personality
+ */
+data class FriendlyAIResponse(
+    val message: String,
+    val tone: ConversationTone,
+    val supportingData: List<FriendlyDataPoint>,
+    val actionableRecommendations: List<FriendlyRecommendation>,
+    val followUpQuestions: List<String>,
+    val celebrationElements: List<CelebrationElement>,
+    val emojis: List<String>,
+    val encouragementLevel: EncouragementLevel
+)
+
+/**
+ * Natural conversation starter for chat initiation
+ */
+data class ConversationStarter(
+    val text: String,
+    val category: ConversationCategory,
+    val personalizedContext: String,
+    val tone: ConversationTone,
+    val emoji: String
+)
+
+/**
+ * Friendly data point with encouraging context
+ */
+data class FriendlyDataPoint(
+    val label: String,
+    val value: String,
+    val friendlyExplanation: String,
+    val encouragingContext: String,
+    val emoji: String
+)
+
+/**
+ * Friendly recommendation with supportive language
+ */
+data class FriendlyRecommendation(
+    val id: String,
+    val title: String,
+    val friendlyDescription: String,
+    val motivationalReason: String,
+    val easyActionText: String,
+    val celebrationPotential: CelebrationType,
+    val supportiveContext: String,
+    val emoji: String
+)
+
+/**
+ * Celebration element for positive reinforcement
+ */
+data class CelebrationElement(
+    val type: CelebrationElementType,
+    val content: String,
+    val intensity: CelebrationIntensity
+)
+
+// Enums for friendly AI personality
+
+enum class ConversationTone {
+    ENCOURAGING,
+    CELEBRATORY, 
+    SUPPORTIVE,
+    GENTLE_GUIDANCE,
+    EXCITED,
+    CARING,
+    ENTHUSIASTIC,
+    WARM_FRIENDLY
+}
+
+enum class CelebrationType {
+    NONE,
+    GENTLE_PRAISE,
+    ENTHUSIASTIC,
+    MILESTONE_CELEBRATION,
+    ACHIEVEMENT_PARTY,
+    PROGRESS_CHEER
+}
+
+enum class EncouragementLevel {
+    MINIMAL,
+    SUPPORTIVE,
+    ENCOURAGING,
+    HIGHLY_MOTIVATING,
+    CELEBRATORY
+}
+
+enum class ConversationCategory {
+    AFFORDABILITY_CHECK,
+    GOAL_PROGRESS,
+    SPENDING_INSIGHTS,
+    SAVINGS_ADVICE,
+    BUDGET_STATUS,
+    GENERAL_ENCOURAGEMENT,
+    ACHIEVEMENT_CELEBRATION,
+    OPTIMIZATION_TIPS
+}
+
+enum class CelebrationElementType {
+    CONFETTI,
+    EMOJI_BURST,
+    ACHIEVEMENT_BADGE,
+    PROGRESS_ANIMATION,
+    ENCOURAGING_TEXT,
+    MILESTONE_MARKER
+}
+
+enum class CelebrationIntensity {
+    SUBTLE,
+    MODERATE,
+    ENTHUSIASTIC,
+    EXPLOSIVE
+}
+
+// Placeholder data classes for compilation
+data class Account(val id: String = "", val name: String = "")
+data class Transaction(val id: String = "", val description: String = "")
+data class FinancialGoal(val id: String = "", val title: String = "")
+data class Budget(val id: String = "", val name: String = "")
+data class UserPreferences(val id: String = "")
+data class Achievement(val id: String = "", val title: String = "")
+data class SpendingAnalysis(val id: String = "")
+data class NetWorthSummary(val total: String = "")
+data class GamificationProfile(val level: Int = 1)
+data class DateRange(val start: String, val end: String)
+data class ExpenseRequest(val amount: String, val description: String)

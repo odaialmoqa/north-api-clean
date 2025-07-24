@@ -1,0 +1,389 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.data.finance.*
+import com.north.mobile.data.plaid.PlaidIntegrationService
+import com.north.mobile.data.plaid.SimplePlaidAccount
+import com.north.mobile.data.plaid.SimplePlaidTransaction
+import com.north.mobile.ui.chat.model.*
+
+/**
+ * AI CFO Financial Advisor that provides personalized financial advice
+ * based on real financial data from Plaid
+ */
+class AICFOFinancialAdvisor(
+    private val plaidService: PlaidIntegrationService,
+    private val financialDataAnalyzer: FinancialDataAnalyzer
+) {
+    private var accounts: List<SimplePlaidAccount> = emptyList()
+    private var transactions: List<SimplePlaidTransaction> = emptyList()
+    private var financialHealth: FinancialHealthAnalysis? = null
+    private var lastDataRefresh: Long = 0
+    
+    /**
+     * Load and analyze financial data
+     */
+    suspend fun refreshFinancialData() {
+        try {
+            // Only refresh if data is older than 1 hour
+            if (System.currentTimeMillis() - lastDataRefresh < 60 * 60 * 1000) {
+                return
+            }
+            
+            // Load accounts
+            accounts = plaidService.getAccounts("current_user")
+            
+            // Load transactions from all accounts
+            val allTransactions = mutableListOf<SimplePlaidTransaction>()
+            accounts.forEach { account ->
+                val result = plaidService.syncTransactions(account.id)
+                if (result.success) {
+                    allTransactions.addAll(result.transactions)
+                }
+            }
+            transactions = allTransactions
+            
+            // Analyze financial health
+            financialHealth = financialDataAnalyzer.calculateFinancialHealthScore(accounts, transactions)
+            
+            lastDataRefresh = System.currentTimeMillis()
+        } catch (e: Exception) {
+            // Handle gracefully - continue with existing data
+        }
+    }
+    
+    /**
+     * Get financial health overview message
+     */
+    fun getFinancialHealthOverview(): ChatMessage {
+        val health = financialHealth
+        
+        return if (health != null) {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = generateHealthOverviewContent(health),
+                type = MessageType.AI_INSIGHT,
+                tone = ConversationTone.SUPPORTIVE,
+                supportingData = health.insights.map { insight ->
+                    FriendlyDataPoint(
+                        label = insight.title,
+                        value = "${insight.score}/100",
+                        friendlyExplanation = insight.description,
+                        encouragingContext = getEncouragingContext(insight.score),
+                        emoji = insight.emoji
+                    )
+                },
+                recommendations = health.recommendations.take(3).map { rec ->
+                    FriendlyRecommendation(
+                        id = "rec_${System.currentTimeMillis()}_${rec.title.hashCode()}",
+                        title = rec.title,
+                        friendlyDescription = rec.description,
+                        motivationalReason = "This will help improve your financial health",
+                        easyActionText = "Take action",
+                        celebrationPotential = CelebrationType.PROGRESS_CHEER,
+                        supportiveContext = "You've got this!",
+                        emoji = rec.emoji
+                    )
+                },
+                timestamp = System.currentTimeMillis().toString()
+            )
+        } else {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "I'm still analyzing your financial data. Let me connect to your accounts first to give you personalized insights! 📊",
+                type = MessageType.AI_RESPONSE,
+                tone = ConversationTone.ENCOURAGING,
+                timestamp = System.currentTimeMillis()
+            )
+        }
+    }
+    
+    /**
+     * Generate spending insights message
+     */
+    fun getSpendingInsights(): ChatMessage {
+        val spendingAnalysis = if (transactions.isNotEmpty()) {
+            financialDataAnalyzer.analyzeSpendingPatterns(transactions)
+        } else null
+        
+        return if (spendingAnalysis != null) {
+            val content = generateSpendingInsightsContent(spendingAnalysis)
+            
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = content,
+                type = MessageType.AI_INSIGHT,
+                tone = ConversationTone.ANALYTICAL,
+                supportingData = listOfNotNull(
+                    spendingAnalysis.topCategory?.let { topCat ->
+                        FriendlyDataPoint(
+                            label = "Top Spending Category",
+                            value = topCat.category,
+                            friendlyExplanation = "You spent $${String.format("%.2f", topCat.amount)} here (${topCat.percentOfTotal.toInt()}% of your budget)",
+                            encouragingContext = if (topCat.percentOfTotal > 40) "This seems high - let's see if we can optimize this!" else "This looks reasonable for your budget.",
+                            emoji = getCategoryEmoji(topCat.category)
+                        )
+                    },
+                    if (spendingAnalysis.recurringExpenses.isNotEmpty()) {
+                        FriendlyDataPoint(
+                            label = "Recurring Expenses",
+                            value = "${spendingAnalysis.recurringExpenses.size} found",
+                            friendlyExplanation = "I found ${spendingAnalysis.recurringExpenses.size} recurring expenses totaling $${String.format("%.2f", spendingAnalysis.recurringExpenses.sumOf { it.averageAmount })} per month",
+                            encouragingContext = "Having predictable expenses helps with budgeting!",
+                            emoji = "🔄"
+                        )
+                    } else null
+                ),
+                timestamp = System.currentTimeMillis()
+            )
+        } else {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "I need to see your transaction data to provide spending insights. Let's connect your accounts first! 💳",
+                type = MessageType.AI_RESPONSE,
+                tone = ConversationTone.ENCOURAGING,
+                timestamp = System.currentTimeMillis()
+            )
+        }
+    }
+    
+    /**
+     * Generate savings opportunities message
+     */
+    fun getSavingsOpportunities(): ChatMessage {
+        val savingsAnalysis = if (accounts.isNotEmpty()) {
+            financialDataAnalyzer.analyzeSavingsRate(accounts, transactions)
+        } else null
+        
+        return if (savingsAnalysis != null && savingsAnalysis.savingsOpportunities.isNotEmpty()) {
+            val content = generateSavingsOpportunitiesContent(savingsAnalysis)
+            
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = content,
+                type = MessageType.AI_INSIGHT,
+                tone = ConversationTone.ENCOURAGING,
+                supportingData = savingsAnalysis.savingsOpportunities.take(3).map { opportunity ->
+                    FriendlyDataPoint(
+                        label = opportunity.category,
+                        value = "$${String.format("%.0f", opportunity.potentialSavings)} potential savings",
+                        friendlyExplanation = "You're spending $${String.format("%.0f", opportunity.currentSpending)} in this category (${opportunity.percentOfTotal.toInt()}% of budget)",
+                        encouragingContext = "Small changes here could add up to big savings!",
+                        emoji = "💰"
+                    )
+                },
+                recommendations = savingsAnalysis.savingsOpportunities.take(2).map { opportunity ->
+                    FriendlyRecommendation(
+                        id = "savings_${opportunity.category.hashCode()}",
+                        title = "Save on ${opportunity.category}",
+                        friendlyDescription = "You could save up to $${String.format("%.0f", opportunity.potentialSavings)} here",
+                        actionable = true,
+                        priority = "medium",
+                        emoji = "✂️",
+                        tips = opportunity.tips
+                    )
+                },
+                timestamp = System.currentTimeMillis()
+            )
+        } else {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "Once I analyze your spending patterns, I'll be able to suggest specific ways to save money! 💡",
+                type = MessageType.AI_RESPONSE,
+                tone = ConversationTone.ENCOURAGING,
+                timestamp = System.currentTimeMillis()
+            )
+        }
+    }
+    
+    /**
+     * Generate personalized financial goals
+     */
+    fun generatePersonalizedGoals(): List<FinancialGoal> {
+        return if (accounts.isNotEmpty()) {
+            val savingsAnalysis = financialDataAnalyzer.analyzeSavingsRate(accounts, transactions)
+            val incomeAnalysis = financialDataAnalyzer.analyzeIncomePatterns(transactions)
+            
+            val goals = mutableListOf<FinancialGoal>()
+            
+            // Emergency Fund Goal
+            if (savingsAnalysis.savingsBalance < 1000) {
+                goals.add(
+                    FinancialGoal(
+                        id = "goal_emergency_${System.currentTimeMillis()}",
+                        name = "Emergency Fund",
+                        type = GoalType.EMERGENCY_FUND,
+                        targetAmount = 1000.0,
+                        currentAmount = savingsAnalysis.savingsBalance,
+                        targetDate = System.currentTimeMillis() + (90 * 24 * 60 * 60 * 1000), // 90 days
+                        priority = GoalPriority.HIGH,
+                        description = "Build a $1,000 starter emergency fund for unexpected expenses",
+                        createdAt = System.currentTimeMillis(),
+                        emoji = "🛡️"
+                    )
+                )
+            }
+            
+            // Savings Rate Goal
+            if (savingsAnalysis.monthlySavingsRate < 15) {
+                goals.add(
+                    FinancialGoal(
+                        id = "goal_savings_rate_${System.currentTimeMillis()}",
+                        name = "Increase Savings Rate",
+                        type = GoalType.SAVINGS_RATE,
+                        targetAmount = 15.0, // 15% target
+                        currentAmount = savingsAnalysis.monthlySavingsRate,
+                        targetDate = System.currentTimeMillis() + (120 * 24 * 60 * 60 * 1000), // 120 days
+                        priority = GoalPriority.MEDIUM,
+                        description = "Save 15% of your monthly income",
+                        createdAt = System.currentTimeMillis(),
+                        emoji = "💰"
+                    )
+                )
+            }
+            
+            goals
+        } else {
+            emptyList()
+        }
+    }
+    
+    /**
+     * Analyze user message and provide contextual response
+     */
+    fun analyzeUserMessage(message: String): ChatMessage {
+        val lowerMessage = message.lowercase()
+        
+        return when {
+            lowerMessage.contains("spending") || lowerMessage.contains("expenses") -> {
+                getSpendingInsights()
+            }
+            lowerMessage.contains("save") || lowerMessage.contains("savings") -> {
+                getSavingsOpportunities()
+            }
+            lowerMessage.contains("health") || lowerMessage.contains("score") -> {
+                getFinancialHealthOverview()
+            }
+            lowerMessage.contains("goal") || lowerMessage.contains("target") -> {
+                generateGoalSuggestionMessage()
+            }
+            else -> {
+                generateContextualResponse(message)
+            }
+        }
+    }
+    
+    // Helper methods
+    
+    private fun generateHealthOverviewContent(health: FinancialHealthAnalysis): String {
+        val scoreEmoji = when {
+            health.overallScore >= 80 -> "🌟"
+            health.overallScore >= 60 -> "👍"
+            health.overallScore >= 40 -> "⚠️"
+            else -> "💪"
+        }
+        
+        return when {
+            health.overallScore >= 80 -> {
+                "$scoreEmoji Your financial health score is ${health.overallScore}/100 - excellent work! You're making smart financial decisions and building a strong foundation."
+            }
+            health.overallScore >= 60 -> {
+                "$scoreEmoji Your financial health score is ${health.overallScore}/100 - you're doing well! There are a few areas where we can make some improvements together."
+            }
+            health.overallScore >= 40 -> {
+                "$scoreEmoji Your financial health score is ${health.overallScore}/100. Don't worry - we can work together to improve this step by step!"
+            }
+            else -> {
+                "$scoreEmoji Your financial health score is ${health.overallScore}/100. Let's focus on building better financial habits together - every small step counts!"
+            }
+        }
+    }
+    
+    private fun generateSpendingInsightsContent(analysis: SpendingAnalysis): String {
+        val topCategory = analysis.topCategory
+        
+        return if (topCategory != null) {
+            "📊 I've analyzed your spending patterns! Your top category is ${topCategory.category}, where you spent $${String.format("%.2f", topCategory.amount)} (${topCategory.percentOfTotal.toInt()}% of your budget). " +
+            if (analysis.recurringExpenses.isNotEmpty()) {
+                "I also found ${analysis.recurringExpenses.size} recurring expenses, which is great for budgeting predictability!"
+            } else {
+                "Let's see if we can optimize your spending in this area!"
+            }
+        } else {
+            "📊 I'm analyzing your spending patterns to help you understand where your money goes each month."
+        }
+    }
+    
+    private fun generateSavingsOpportunitiesContent(analysis: SavingsAnalysis): String {
+        val topOpportunity = analysis.savingsOpportunities.firstOrNull()
+        
+        return if (topOpportunity != null) {
+            "💡 I found some savings opportunities for you! Your biggest opportunity is in ${topOpportunity.category}, where you could potentially save $${String.format("%.0f", topOpportunity.potentialSavings)}. " +
+            "Small changes in your spending habits can add up to significant savings over time!"
+        } else {
+            "💡 Your spending looks well-balanced! I'll keep monitoring for new savings opportunities as your patterns change."
+        }
+    }
+    
+    private fun generateGoalSuggestionMessage(): ChatMessage {
+        val goals = generatePersonalizedGoals()
+        
+        return if (goals.isNotEmpty()) {
+            val primaryGoal = goals.first()
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "🎯 Based on your financial data, I'd recommend starting with a ${primaryGoal.name}. ${primaryGoal.description}",
+                type = MessageType.GOAL_SUGGESTION,
+                tone = ConversationTone.ENCOURAGING,
+                goalSuggestion = GoalSuggestion(
+                    goal = primaryGoal,
+                    reasoning = "This goal will help build your financial foundation and give you peace of mind.",
+                    nextSteps = listOf(
+                        "Set up automatic transfers to savings",
+                        "Track your progress weekly",
+                        "Celebrate small milestones along the way"
+                    )
+                ),
+                timestamp = System.currentTimeMillis()
+            )
+        } else {
+            ChatMessage(
+                id = "ai_${System.currentTimeMillis()}",
+                content = "🎯 Let me analyze your financial data first, then I can suggest personalized goals that make sense for your situation!",
+                type = MessageType.AI_RESPONSE,
+                tone = ConversationTone.ENCOURAGING,
+                timestamp = System.currentTimeMillis()
+            )
+        }
+    }
+    
+    private fun generateContextualResponse(message: String): ChatMessage {
+        return ChatMessage(
+            id = "ai_${System.currentTimeMillis()}",
+            content = "I understand you're asking about: \"$message\". Let me analyze your financial data to give you a personalized response! 🤔",
+            type = MessageType.AI_RESPONSE,
+            tone = ConversationTone.THOUGHTFUL,
+            timestamp = System.currentTimeMillis()
+        )
+    }
+    
+    private fun getEncouragingContext(score: Int): String {
+        return when {
+            score >= 80 -> "You're doing fantastic!"
+            score >= 60 -> "You're on the right track!"
+            score >= 40 -> "There's room for improvement, but you've got this!"
+            else -> "Every journey starts with a single step - let's improve this together!"
+        }
+    }
+    
+    private fun getCategoryEmoji(category: String): String {
+        return when (category.lowercase()) {
+            "food and drink" -> "🍽️"
+            "shopping" -> "🛍️"
+            "entertainment" -> "🎬"
+            "transportation" -> "🚗"
+            "bills" -> "📄"
+            "healthcare" -> "🏥"
+            else -> "💳"
+        }
+    }
+}

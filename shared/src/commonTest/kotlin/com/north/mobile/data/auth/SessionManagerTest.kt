@@ -1,249 +1,284 @@
 package com.north.mobile.data.auth
 
-import com.north.mobile.data.security.EncryptionManager
-import com.north.mobile.data.security.EncryptedData
-import com.russhwolf.settings.MapSettings
+import com.north.mobile.data.api.UserResponse
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
-import kotlinx.datetime.Clock
-import kotlinx.datetime.Instant
-import kotlin.test.*
-import kotlin.time.Duration.Companion.hours
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SessionManagerTest {
     
-    private lateinit var mockEncryptionManager: MockEncryptionManager
-    private lateinit var settings: MapSettings
-    private lateinit var sessionManager: SessionManagerImpl
+    private val sessionManager = SessionManagerImpl()
     
-    @BeforeTest
-    fun setup() {
-        mockEncryptionManager = MockEncryptionManager()
-        settings = MapSettings()
-        sessionManager = SessionManagerImpl(settings, mockEncryptionManager)
+    @Test
+    fun `saveAuthToken should store token and mark session as valid`() = runTest {
+        // Given
+        val token = "test-token-123"
+        
+        // When
+        sessionManager.saveAuthToken(token)
+        
+        // Then
+        assertEquals(token, sessionManager.getAuthToken())
+        assertTrue(sessionManager.isSessionValid())
     }
     
     @Test
-    fun `storeTokens should encrypt and store tokens successfully`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
+    fun `saveUser should store user data`() = runTest {
+        // Given
+        val user = UserResponse(
+            id = "user-123",
+            email = "test@example.com",
+            firstName = "John",
+            lastName = "Doe"
+        )
+        val token = "test-token-123"
         
-        val result = sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
+        // When
+        sessionManager.saveAuthToken(token)
+        sessionManager.saveUser(user)
         
-        assertTrue(result.isSuccess)
-        
-        val storedAccessToken = sessionManager.getAccessToken().getOrNull()
-        assertEquals(accessToken, storedAccessToken)
-        
-        val storedRefreshToken = sessionManager.getRefreshToken().getOrNull()
-        assertEquals(refreshToken, storedRefreshToken)
+        // Then
+        val storedUser = sessionManager.getUser()
+        assertNotNull(storedUser)
+        assertEquals(user.email, storedUser.email)
+        assertEquals(user.firstName, storedUser.firstName)
+        assertEquals(user.lastName, storedUser.lastName)
     }
     
     @Test
-    fun `getAccessToken should return null when no tokens stored`() = runTest {
-        val result = sessionManager.getAccessToken()
+    fun `clearSession should remove all session data`() = runTest {
+        // Given
+        val token = "test-token-123"
+        val user = UserResponse(
+            id = "user-123",
+            email = "test@example.com",
+            firstName = "John",
+            lastName = "Doe"
+        )
         
-        assertTrue(result.isSuccess)
-        assertNull(result.getOrNull())
+        sessionManager.saveAuthToken(token)
+        sessionManager.saveUser(user)
+        
+        // When
+        sessionManager.clearSession()
+        
+        // Then
+        assertNull(sessionManager.getAuthToken())
+        assertNull(sessionManager.getUser())
+        assertFalse(sessionManager.isSessionValid())
     }
     
     @Test
-    fun `isTokenValid should return true for valid token`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
+    fun `isSessionValid should return false when no token is stored`() = runTest {
+        // Given - fresh session manager
         
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        
-        assertTrue(sessionManager.isTokenValid())
+        // When & Then
+        assertFalse(sessionManager.isSessionValid())
     }
     
     @Test
-    fun `isTokenValid should return false for expired token`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().minus(1.hours) // Expired
+    fun `isSessionValid should return false when token exists but no user`() = runTest {
+        // Given
+        sessionManager.saveAuthToken("test-token")
         
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        
-        assertFalse(sessionManager.isTokenValid())
+        // When & Then
+        assertFalse(sessionManager.isSessionValid())
     }
     
     @Test
-    fun `hasValidSession should return true when token is valid`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
+    fun `isSessionValid should return true when both token and user exist`() = runTest {
+        // Given
+        val token = "test-token-123"
+        val user = UserResponse(
+            id = "user-123",
+            email = "test@example.com",
+            firstName = "John",
+            lastName = "Doe"
+        )
         
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
+        // When
+        sessionManager.saveAuthToken(token)
+        sessionManager.saveUser(user)
         
-        assertTrue(sessionManager.hasValidSession())
+        // Then
+        assertTrue(sessionManager.isSessionValid())
     }
     
-    @Test
-    fun `hasValidSession should return false when token is expired`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().minus(1.hours)
-        
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        
-        assertFalse(sessionManager.hasValidSession())
-    }
+    // Enhanced tests for UX improvements
     
     @Test
-    fun `clearTokens should remove all stored tokens`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
+    fun `getSessionState should emit correct initial state`() = runTest {
+        // Given - fresh session manager
         
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        
-        val clearResult = sessionManager.clearTokens()
-        assertTrue(clearResult.isSuccess)
-        
-        val accessTokenResult = sessionManager.getAccessToken()
-        assertTrue(accessTokenResult.isSuccess)
-        assertNull(accessTokenResult.getOrNull())
-        
-        val refreshTokenResult = sessionManager.getRefreshToken()
-        assertTrue(refreshTokenResult.isSuccess)
-        assertNull(refreshTokenResult.getOrNull())
-        
-        assertFalse(sessionManager.hasValidSession())
-    }
-    
-    @Test
-    fun `getTokenExpirationTime should return correct expiration time`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
-        
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        
-        val retrievedExpirationTime = sessionManager.getTokenExpirationTime()
-        assertEquals(expiresAt, retrievedExpirationTime)
-    }
-    
-    @Test
-    fun `getTokenExpirationTime should return null when no tokens stored`() = runTest {
-        val expirationTime = sessionManager.getTokenExpirationTime()
-        assertNull(expirationTime)
-    }
-    
-    @Test
-    fun `refreshToken should return success with new token`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
-        
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        
-        val refreshResult = sessionManager.refreshToken()
-        assertTrue(refreshResult.isSuccess)
-        
-        val result = refreshResult.getOrThrow()
-        assertTrue(result is TokenRefreshResult.Success)
-        
-        val successResult = result as TokenRefreshResult.Success
-        assertNotEquals(accessToken, successResult.accessToken)
-        assertTrue(successResult.expiresAt > Clock.System.now())
-    }
-    
-    @Test
-    fun `refreshToken should return RefreshTokenExpired when no refresh token`() = runTest {
-        val refreshResult = sessionManager.refreshToken()
-        assertTrue(refreshResult.isSuccess)
-        
-        val result = refreshResult.getOrThrow()
-        assertTrue(result is TokenRefreshResult.RefreshTokenExpired)
-    }
-    
-    @Test
-    fun `session state should be updated correctly`() = runTest {
+        // When
         val initialState = sessionManager.getSessionState().first()
-        assertFalse(initialState.hasValidSession)
-        assertNull(initialState.accessToken)
-        assertNull(initialState.tokenExpiresAt)
         
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
-        
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        
-        val updatedState = sessionManager.getSessionState().first()
-        assertTrue(updatedState.hasValidSession)
-        assertEquals(accessToken, updatedState.accessToken)
-        assertEquals(expiresAt, updatedState.tokenExpiresAt)
+        // Then
+        assertFalse(initialState.isAuthenticated)
+        assertNull(initialState.token)
+        assertNull(initialState.user)
+        assertNull(initialState.expiresAt)
     }
     
     @Test
-    fun `encryption failure should result in store failure`() = runTest {
-        mockEncryptionManager.shouldFailEncryption = true
+    fun `getSessionState should emit updated state after saving token`() = runTest {
+        // Given
+        val token = "test-token-123"
         
-        val result = sessionManager.storeTokens("token", "refresh", Clock.System.now().plus(1.hours))
+        // When
+        sessionManager.saveAuthToken(token)
+        val state = sessionManager.getSessionState().first()
         
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull() is SessionException)
+        // Then
+        assertFalse(state.isAuthenticated) // Still false because no user
+        assertEquals(token, state.token)
+        assertNotNull(state.expiresAt)
+        assertTrue(state.expiresAt!! > System.currentTimeMillis())
     }
     
     @Test
-    fun `decryption failure should result in get failure`() = runTest {
-        val accessToken = "access_token_123"
-        val refreshToken = "refresh_token_456"
-        val expiresAt = Clock.System.now().plus(1.hours)
+    fun `getSessionState should emit authenticated state when both token and user exist`() = runTest {
+        // Given
+        val token = "test-token-123"
+        val user = UserResponse(
+            id = "user-123",
+            email = "test@example.com",
+            firstName = "John",
+            lastName = "Doe"
+        )
         
-        sessionManager.storeTokens(accessToken, refreshToken, expiresAt)
-        mockEncryptionManager.shouldFailDecryption = true
+        // When
+        sessionManager.saveAuthToken(token)
+        sessionManager.saveUser(user)
+        val state = sessionManager.getSessionState().first()
         
-        val result = sessionManager.getAccessToken()
-        
-        assertTrue(result.isFailure)
-        assertTrue(result.exceptionOrNull() is SessionException)
+        // Then
+        assertTrue(state.isAuthenticated)
+        assertEquals(token, state.token)
+        assertEquals(user, state.user)
+        assertNotNull(state.expiresAt)
     }
-}
-
-// Mock implementation for testing
-private class MockEncryptionManager : EncryptionManager {
-    var shouldFailEncryption = false
-    var shouldFailDecryption = false
-    private val storage = mutableMapOf<String, String>()
     
-    override suspend fun initialize(): Result<Unit> = Result.success(Unit)
+    @Test
+    fun `getSessionState should emit cleared state after clearSession`() = runTest {
+        // Given
+        val token = "test-token-123"
+        val user = UserResponse(
+            id = "user-123",
+            email = "test@example.com",
+            firstName = "John",
+            lastName = "Doe"
+        )
+        
+        sessionManager.saveAuthToken(token)
+        sessionManager.saveUser(user)
+        
+        // When
+        sessionManager.clearSession()
+        val state = sessionManager.getSessionState().first()
+        
+        // Then
+        assertFalse(state.isAuthenticated)
+        assertNull(state.token)
+        assertNull(state.user)
+        assertNull(state.expiresAt)
+    }
     
-    override suspend fun generateDatabaseKey(): Result<String> = Result.success("test_key")
-    
-    override suspend fun getDatabaseKey(): Result<String> = Result.success("test_key")
-    
-    override suspend fun encrypt(data: String, keyAlias: String): Result<EncryptedData> {
-        return if (shouldFailEncryption) {
-            Result.failure(Exception("Encryption failed"))
-        } else {
-            storage[keyAlias] = data
-            val encryptedData = EncryptedData(
-                encryptedContent = data.encodeToByteArray(),
-                iv = "test_iv".encodeToByteArray(),
-                keyAlias = keyAlias
-            )
-            Result.success(encryptedData)
+    @Test
+    fun `token should be considered invalid after expiration time`() = runTest {
+        // Given - Create a custom session manager that simulates expired tokens
+        val expiredSessionManager = object : SessionManagerImpl() {
+            private var forceExpired = false
+            
+            fun expireToken() {
+                forceExpired = true
+            }
+            
+            override suspend fun getAuthToken(): String? {
+                return if (forceExpired) null else super.getAuthToken()
+            }
+            
+            override suspend fun isSessionValid(): Boolean {
+                return if (forceExpired) false else super.isSessionValid()
+            }
         }
+        
+        val user = UserResponse(
+            id = "user-123",
+            email = "test@example.com",
+            firstName = "John",
+            lastName = "Doe"
+        )
+        
+        // When - Set up valid session first
+        expiredSessionManager.saveAuthToken("valid-token")
+        expiredSessionManager.saveUser(user)
+        assertTrue(expiredSessionManager.isSessionValid())
+        
+        // When - Force token expiration
+        expiredSessionManager.expireToken()
+        
+        // Then - Session should be invalid
+        assertNull(expiredSessionManager.getAuthToken())
+        assertFalse(expiredSessionManager.isSessionValid())
     }
     
-    override suspend fun decrypt(encryptedData: EncryptedData, keyAlias: String): Result<String> {
-        return if (shouldFailDecryption) {
-            Result.failure(Exception("Decryption failed"))
-        } else {
-            val data = storage[keyAlias] ?: return Result.failure(Exception("Data not found"))
-            Result.success(data)
-        }
+    @Test
+    fun `multiple token saves should update expiration time`() = runTest {
+        // Given
+        val firstToken = "first-token"
+        val secondToken = "second-token"
+        
+        // When
+        sessionManager.saveAuthToken(firstToken)
+        val firstState = sessionManager.getSessionState().first()
+        val firstExpiration = firstState.expiresAt
+        
+        // Wait a bit to ensure different timestamps
+        kotlinx.coroutines.delay(10)
+        
+        sessionManager.saveAuthToken(secondToken)
+        val secondState = sessionManager.getSessionState().first()
+        val secondExpiration = secondState.expiresAt
+        
+        // Then
+        assertEquals(secondToken, sessionManager.getAuthToken())
+        assertNotNull(firstExpiration)
+        assertNotNull(secondExpiration)
+        assertTrue(secondExpiration!! > firstExpiration!!)
     }
     
-    override fun isEncryptionAvailable(): Boolean = true
-    
-    override suspend fun clearKeys(): Result<Unit> {
-        storage.clear()
-        return Result.success(Unit)
+    @Test
+    fun `session should remain valid for expected duration`() = runTest {
+        // Given
+        val token = "test-token-123"
+        val user = UserResponse(
+            id = "user-123",
+            email = "test@example.com",
+            firstName = "John",
+            lastName = "Doe"
+        )
+        
+        // When
+        sessionManager.saveAuthToken(token)
+        sessionManager.saveUser(user)
+        val state = sessionManager.getSessionState().first()
+        
+        // Then
+        assertTrue(sessionManager.isSessionValid())
+        assertNotNull(state.expiresAt)
+        
+        // Token should be valid for approximately 24 hours (86400000 ms)
+        val expectedExpiration = System.currentTimeMillis() + 86400000L
+        val actualExpiration = state.expiresAt!!
+        val timeDifference = kotlin.math.abs(actualExpiration - expectedExpiration)
+        
+        // Allow for small timing differences (within 1 second)
+        assertTrue(timeDifference < 1000, "Token expiration time should be approximately 24 hours from now")
     }
 }

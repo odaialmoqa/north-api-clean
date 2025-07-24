@@ -280,7 +280,7 @@ data class DateRange(
     val endDate: LocalDate
 ) {
     val durationInDays: Long
-        get() = endDate.toEpochDays() - startDate.toEpochDays()
+        get() = (endDate.toEpochDays() - startDate.toEpochDays()).toLong()
     
     val durationInWeeks: Double
         get() = durationInDays / 7.0

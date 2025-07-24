@@ -1,0 +1,41 @@
+package com.north.mobile.ui.chat.model
+
+/**
+ * Categories for conversation topics and intents
+ */
+enum class ConversationCategory {
+    // General conversation flows
+    GREETING,
+    FAREWELL,
+    GENERAL_ENCOURAGEMENT,
+    
+    // Financial topics
+    BUDGET_STATUS,
+    SPENDING_INSIGHTS,
+    SAVINGS_ADVICE,
+    DEBT_MANAGEMENT,
+    INVESTMENT_ADVICE,
+    
+    // Goal-related
+    GOAL_PROGRESS,
+    GOAL_CREATION,
+    GOAL_COMPLETION,
+    
+    // Specific actions
+    AFFORDABILITY_CHECK,
+    TRANSACTION_ANALYSIS,
+    SPENDING_TREND,
+    
+    // Emotional support
+    FINANCIAL_STRESS,
+    ACHIEVEMENT_CELEBRATION,
+    MOTIVATION,
+    
+    // System messages
+    SYSTEM_ALERT,
+    FEEDBACK_REQUEST,
+    
+    // Error states
+    ERROR_RECOVERY,
+    CLARIFICATION_NEEDED
+}

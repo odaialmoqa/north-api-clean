@@ -1,0 +1,14 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.ui.chat.model.*
+
+/**
+ * Common interface for AI CFO services
+ */
+interface AICFOServiceInterface {
+    suspend fun initializeChat(userName: String): ChatMessage
+    suspend fun processMessage(userMessage: String): ChatMessage
+    fun getConversationStarters(): List<ConversationStarter>
+    fun isInOnboarding(): Boolean
+    fun getCurrentOnboardingStep(): OnboardingStep
+}

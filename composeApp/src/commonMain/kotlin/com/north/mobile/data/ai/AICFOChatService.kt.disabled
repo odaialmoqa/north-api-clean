@@ -1,0 +1,462 @@
+package com.north.mobile.data.ai
+
+import com.north.mobile.ui.chat.model.*
+import kotlinx.coroutines.delay
+
+/**
+ * Main AI CFO Chat Service that handles all conversation logic
+ */
+class AICFOChatService : AICFOServiceInterface {
+    
+    private val onboardingService = AICFOOnboardingService()
+    private var conversationContext = ConversationContext()
+    private var userFinancialContext: UserFinancialContext? = null
+    
+    /**
+     * Initialize chat with AI CFO welcome message
+     */
+    override suspend fun initializeChat(userName: String): ChatMessage {
+        conversationContext = conversationContext.copy(userName = userName)
+        
+        // Start onboarding conversation
+        val onboardingResponse = onboardingService.startOnboardingConversation(userName)
+        
+        return convertAIResponseToChatMessage(onboardingResponse)
+    }
+    
+    /**
+     * Process user message and generate AI CFO response
+     */
+    override suspend fun processMessage(userMessage: String): ChatMessage {
+        // Update conversation context
+        conversationContext = updateConversationContext(conversationContext, userMessage)
+        
+        // Add typing delay for natural feel
+        delay(1000L + (userMessage.length * 20L)) // Simulate reading and thinking time
+        
+        val aiResponse = if (!onboardingService.isOnboardingComplete()) {
+            // Handle onboarding conversation
+            onboardingService.processOnboardingResponse(
+                userMessage = userMessage,
+                currentContext = onboardingService.getUserContext()
+            )
+        } else {
+            // Handle regular AI CFO conversation
+            processRegularConversation(userMessage)
+        }
+        
+        return convertAIResponseToChatMessage(aiResponse)
+    }
+    
+    /**
+     * Get conversation starters based on current context
+     */
+    override fun getConversationStarters(): List<ConversationStarter> {
+        return if (!onboardingService.isOnboardingComplete()) {
+            // Onboarding starters
+            getOnboardingConversationStarters()
+        } else {
+            // Regular conversation starters
+            getRegularConversationStarters()
+        }
+    }
+    
+    /**
+     * Check if user is still in onboarding
+     */
+    override fun isInOnboarding(): Boolean = !onboardingService.isOnboardingComplete()
+    
+    /**
+     * Get current onboarding step for UI customization
+     */
+    override fun getCurrentOnboardingStep(): OnboardingStep = onboardingService.getCurrentOnboardingStep()
+    
+    private suspend fun processRegularConversation(userMessage: String): FriendlyAIResponse {
+        val lowerMessage = userMessage.lowercase()
+        
+        return when {
+            lowerMessage.contains("goal") -> handleGoalInquiry(userMessage)
+            lowerMessage.contains("spend") || lowerMessage.contains("spending") -> handleSpendingInquiry(userMessage)
+            lowerMessage.contains("save") || lowerMessage.contains("saving") -> handleSavingInquiry(userMessage)
+            lowerMessage.contains("budget") -> handleBudgetInquiry(userMessage)
+            lowerMessage.contains("afford") -> handleAffordabilityInquiry(userMessage)
+            lowerMessage.contains("help") -> handleGeneralHelp(userMessage)
+            lowerMessage.contains("celebrate") || lowerMessage.contains("achievement") -> handleCelebration(userMessage)
+            else -> handleGeneralConversation(userMessage)
+        }
+    }
+    
+    private suspend fun handleGoalInquiry(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "I love that you're thinking about your goals! 🎯 Based on what we discussed during our initial chat, you're working toward some really exciting things!\n\nLet me check on your progress and see how you're doing. What specific goal would you like to talk about today?",
+            tone = ConversationTone.ENCOURAGING,
+            supportingData = listOf(
+                FriendlyDataPoint(
+                    label = "Active Goals",
+                    value = "3 goals in progress",
+                    friendlyExplanation = "You're actively working on multiple goals - that's fantastic!",
+                    encouragingContext = "Multi-goal focus shows great financial discipline! 💪",
+                    emoji = "🎯"
+                )
+            ),
+            actionableRecommendations = listOf(
+                FriendlyRecommendation(
+                    id = "goal_check_1",
+                    title = "Review Goal Progress",
+                    friendlyDescription = "Let's look at how close you are to reaching your targets",
+                    motivationalReason = "Seeing your progress will give you that motivation boost!",
+                    easyActionText = "Show me my progress",
+                    celebrationPotential = CelebrationType.PROGRESS_CHEER,
+                    supportiveContext = "You've been making steady progress!",
+                    emoji = "📈"
+                )
+            ),
+            followUpQuestions = listOf(
+                "Show me my emergency fund progress",
+                "How am I doing with my savings goal?",
+                "Can I add a new goal?",
+                "Help me adjust an existing goal"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("🎯", "💫", "🚀"),
+            encouragementLevel = EncouragementLevel.ENCOURAGING
+        )
+    }
+    
+    private suspend fun handleSpendingInquiry(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "Great question! Understanding your spending is such a smart move! 📊 Let me break down what I'm seeing from your recent transactions...\n\nYou're actually doing better than you might think! Here's what stands out to me:",
+            tone = ConversationTone.SUPPORTIVE,
+            supportingData = listOf(
+                FriendlyDataPoint(
+                    label = "This Month's Spending",
+                    value = "$2,340",
+                    friendlyExplanation = "You're tracking well within your typical range",
+                    encouragingContext = "That's 5% less than last month - nice work! 👏",
+                    emoji = "💳"
+                ),
+                FriendlyDataPoint(
+                    label = "Top Category",
+                    value = "Groceries ($420)",
+                    friendlyExplanation = "Essential spending - you're prioritizing the right things",
+                    encouragingContext = "Smart focus on necessities first!",
+                    emoji = "🛒"
+                )
+            ),
+            actionableRecommendations = listOf(
+                FriendlyRecommendation(
+                    id = "spending_insight_1",
+                    title = "Dining Out Opportunity",
+                    friendlyDescription = "You spent $180 on restaurants this month - maybe we can optimize this?",
+                    motivationalReason = "Small changes here could boost your savings without sacrificing fun!",
+                    easyActionText = "Show me dining alternatives",
+                    celebrationPotential = CelebrationType.GENTLE_PRAISE,
+                    supportiveContext = "You deserve to enjoy dining out - let's just make it more strategic!",
+                    emoji = "🍽️"
+                )
+            ),
+            followUpQuestions = listOf(
+                "Show me more spending categories",
+                "How can I reduce dining expenses?",
+                "Compare to last month",
+                "Set up spending alerts"
+            ),
+            celebrationElements = listOf(
+                CelebrationElement(
+                    type = CelebrationElementType.ENCOURAGING_TEXT,
+                    content = "You're being so proactive about understanding your money! 🌟",
+                    intensity = CelebrationIntensity.SUBTLE
+                )
+            ),
+            emojis = listOf("📊", "💡", "👏"),
+            encouragementLevel = EncouragementLevel.SUPPORTIVE
+        )
+    }
+    
+    private suspend fun handleSavingInquiry(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "I'm so proud of you for focusing on saving! 💰 That mindset is going to take you so far!\n\nLet me show you some exciting ways to boost your savings even more. You're already doing great, and with a few tweaks, you could be saving even more without feeling deprived!",
+            tone = ConversationTone.ENTHUSIASTIC,
+            supportingData = listOf(
+                FriendlyDataPoint(
+                    label = "Current Savings Rate",
+                    value = "18% of income",
+                    friendlyExplanation = "You're saving more than most people your age!",
+                    encouragingContext = "That's above the recommended 15% - you're crushing it! 🎉",
+                    emoji = "💪"
+                )
+            ),
+            actionableRecommendations = listOf(
+                FriendlyRecommendation(
+                    id = "savings_boost_1",
+                    title = "Automate Your Success",
+                    friendlyDescription = "Set up automatic transfers to make saving effortless",
+                    motivationalReason = "You'll save more without even thinking about it!",
+                    easyActionText = "Set up auto-save",
+                    celebrationPotential = CelebrationType.MILESTONE_CELEBRATION,
+                    supportiveContext = "Automation is the secret weapon of successful savers!",
+                    emoji = "🤖"
+                )
+            ),
+            followUpQuestions = listOf(
+                "How can I save more each month?",
+                "Show me my savings progress",
+                "Help me find money to save",
+                "Set a new savings challenge"
+            ),
+            celebrationElements = listOf(
+                CelebrationElement(
+                    type = CelebrationElementType.EMOJI_BURST,
+                    content = "💰✨🎯",
+                    intensity = CelebrationIntensity.MODERATE
+                )
+            ),
+            emojis = listOf("💰", "🚀", "🎯"),
+            encouragementLevel = EncouragementLevel.HIGHLY_MOTIVATING
+        )
+    }
+    
+    private suspend fun handleBudgetInquiry(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "Budgeting questions are my favorite! 📝 You're taking control of your money, and that's so empowering!\n\nLet me help you create a budget that actually works for your lifestyle - no restrictive rules, just smart guidelines that help you reach your goals while still enjoying life!",
+            tone = ConversationTone.ENCOURAGING,
+            supportingData = listOf(
+                FriendlyDataPoint(
+                    label = "Budget Performance",
+                    value = "On track in 7/9 categories",
+                    friendlyExplanation = "You're doing really well with most of your spending categories",
+                    encouragingContext = "That's a 78% success rate - fantastic! 🎉",
+                    emoji = "📊"
+                )
+            ),
+            actionableRecommendations = listOf(
+                FriendlyRecommendation(
+                    id = "budget_help_1",
+                    title = "Flexible Budget Approach",
+                    friendlyDescription = "Let's create spending guidelines that bend without breaking",
+                    motivationalReason = "Flexible budgets are more sustainable and less stressful!",
+                    easyActionText = "Build my flexible budget",
+                    celebrationPotential = CelebrationType.PROGRESS_CHEER,
+                    supportiveContext = "The best budget is one you can actually stick to!",
+                    emoji = "🎯"
+                )
+            ),
+            followUpQuestions = listOf(
+                "Help me stick to my budget",
+                "Adjust my spending categories",
+                "Show me where I'm overspending",
+                "Create a new budget plan"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("📝", "💡", "🎯"),
+            encouragementLevel = EncouragementLevel.ENCOURAGING
+        )
+    }
+    
+    private suspend fun handleAffordabilityInquiry(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "Ooh, affordability check! I love that you're thinking before spending - that's such a smart habit! 💸\n\nTell me what you're considering buying, and I'll help you figure out if it fits well with your goals and current financial situation. No judgment here - just friendly guidance!",
+            tone = ConversationTone.SUPPORTIVE,
+            supportingData = emptyList(),
+            actionableRecommendations = listOf(
+                FriendlyRecommendation(
+                    id = "affordability_1",
+                    title = "Smart Purchase Framework",
+                    friendlyDescription = "Let's use the 24-hour rule and goal-alignment check",
+                    motivationalReason = "This helps you make purchases you'll feel great about!",
+                    easyActionText = "Check if I can afford it",
+                    celebrationPotential = CelebrationType.GENTLE_PRAISE,
+                    supportiveContext = "Thoughtful spending leads to zero buyer's remorse!",
+                    emoji = "🤔"
+                )
+            ),
+            followUpQuestions = listOf(
+                "I want to buy something for $200",
+                "Is this purchase worth it?",
+                "Help me prioritize my wants",
+                "Show me my available spending money"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("💸", "🤔", "💡"),
+            encouragementLevel = EncouragementLevel.SUPPORTIVE
+        )
+    }
+    
+    private suspend fun handleCelebration(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "YES! I LOVE celebration time! 🎉🎊 You've been working so hard on your financial goals, and it's time to recognize all that amazing progress!\n\nTell me what you want to celebrate - did you hit a savings milestone, stick to your budget, or maybe resist a tempting purchase? I'm here for ALL the wins, big and small!",
+            tone = ConversationTone.CELEBRATORY,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "I reached my savings goal!",
+                "I stuck to my budget this month",
+                "I made a smart financial decision",
+                "Show me all my recent wins"
+            ),
+            celebrationElements = listOf(
+                CelebrationElement(
+                    type = CelebrationElementType.CONFETTI,
+                    content = "🎊🎉✨🎈",
+                    intensity = CelebrationIntensity.ENTHUSIASTIC
+                ),
+                CelebrationElement(
+                    type = CelebrationElementType.ENCOURAGING_TEXT,
+                    content = "You're absolutely crushing your financial journey! 🌟",
+                    intensity = CelebrationIntensity.ENTHUSIASTIC
+                )
+            ),
+            emojis = listOf("🎉", "🎊", "🌟", "💪", "🚀"),
+            encouragementLevel = EncouragementLevel.CELEBRATORY
+        )
+    }
+    
+    private suspend fun handleGeneralHelp(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "I'm so glad you asked for help! 🤗 That takes courage, and I'm honored to be your financial support system.\n\nI'm here to help with anything money-related - whether it's big picture planning, day-to-day decisions, or just being that encouraging voice when you need motivation. What's on your mind?",
+            tone = ConversationTone.CARING,
+            supportingData = emptyList(),
+            actionableRecommendations = listOf(
+                FriendlyRecommendation(
+                    id = "general_help_1",
+                    title = "Financial Health Checkup",
+                    friendlyDescription = "Let's review your overall financial wellness together",
+                    motivationalReason = "Regular checkups keep you on track and feeling confident!",
+                    easyActionText = "Start my financial checkup",
+                    celebrationPotential = CelebrationType.PROGRESS_CHEER,
+                    supportiveContext = "Knowledge is power, and you're building both!",
+                    emoji = "🩺"
+                )
+            ),
+            followUpQuestions = listOf(
+                "Help me prioritize my financial goals",
+                "I'm feeling overwhelmed about money",
+                "Give me a financial pep talk",
+                "What should I focus on this month?"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("🤗", "💪", "🌟"),
+            encouragementLevel = EncouragementLevel.SUPPORTIVE
+        )
+    }
+    
+    private suspend fun handleGeneralConversation(userMessage: String): FriendlyAIResponse {
+        return FriendlyAIResponse(
+            message = "Thanks for sharing that with me! 😊 I love our conversations - you always give me such good insights into what matters to you.\n\nHow can I help you with your financial journey today? Whether it's checking on goals, understanding spending, or just getting some encouragement, I'm here for you!",
+            tone = ConversationTone.WARM_FRIENDLY,
+            supportingData = emptyList(),
+            actionableRecommendations = emptyList(),
+            followUpQuestions = listOf(
+                "Check my goal progress",
+                "Help me with a purchase decision",
+                "Review my spending patterns",
+                "Give me some financial motivation"
+            ),
+            celebrationElements = emptyList(),
+            emojis = listOf("😊", "💬", "🤗"),
+            encouragementLevel = EncouragementLevel.SUPPORTIVE
+        )
+    }
+    
+    private fun getOnboardingConversationStarters(): List<ConversationStarter> {
+        return when (onboardingService.getCurrentOnboardingStep()) {
+            OnboardingStep.WELCOME -> listOf(
+                ConversationStarter(
+                    text = "Tell me about your biggest financial goal right now",
+                    category = ConversationCategory.GOAL_PROGRESS,
+                    personalizedContext = "Let's start with what matters most to you",
+                    tone = ConversationTone.ENCOURAGING,
+                    emoji = "🎯"
+                ),
+                ConversationStarter(
+                    text = "What's your biggest money worry?",
+                    category = ConversationCategory.GENERAL_ENCOURAGEMENT,
+                    personalizedContext = "I'm here to help ease those concerns",
+                    tone = ConversationTone.CARING,
+                    emoji = "😰"
+                ),
+                ConversationStarter(
+                    text = "I want to save for something specific",
+                    category = ConversationCategory.SAVINGS_ADVICE,
+                    personalizedContext = "Let's make that dream a reality",
+                    tone = ConversationTone.ENTHUSIASTIC,
+                    emoji = "💰"
+                ),
+                ConversationStarter(
+                    text = "Help me understand my spending better",
+                    category = ConversationCategory.SPENDING_INSIGHTS,
+                    personalizedContext = "Knowledge is the first step to improvement",
+                    tone = ConversationTone.SUPPORTIVE,
+                    emoji = "📊"
+                )
+            )
+            else -> listOf(
+                ConversationStarter(
+                    text = "Continue our conversation",
+                    category = ConversationCategory.GENERAL_ENCOURAGEMENT,
+                    personalizedContext = "Let's keep building your financial plan",
+                    tone = ConversationTone.WARM_FRIENDLY,
+                    emoji = "💬"
+                )
+            )
+        }
+    }
+    
+    private fun getRegularConversationStarters(): List<ConversationStarter> {
+        return listOf(
+            ConversationStarter(
+                text = "Check my goal progress",
+                category = ConversationCategory.GOAL_PROGRESS,
+                personalizedContext = "See how you're doing with your personalized goals",
+                tone = ConversationTone.ENCOURAGING,
+                emoji = "🎯"
+            ),
+            ConversationStarter(
+                text = "Help me with a purchase decision",
+                category = ConversationCategory.AFFORDABILITY_CHECK,
+                personalizedContext = "Make smart spending choices together",
+                tone = ConversationTone.SUPPORTIVE,
+                emoji = "💸"
+            ),
+            ConversationStarter(
+                text = "Review my spending this month",
+                category = ConversationCategory.SPENDING_INSIGHTS,
+                personalizedContext = "Understand your money patterns",
+                tone = ConversationTone.SUPPORTIVE,
+                emoji = "📊"
+            ),
+            ConversationStarter(
+                text = "Celebrate my financial wins!",
+                category = ConversationCategory.ACHIEVEMENT_CELEBRATION,
+                personalizedContext = "Time to recognize your awesome progress",
+                tone = ConversationTone.CELEBRATORY,
+                emoji = "🎉"
+            )
+        )
+    }
+    
+    private fun convertAIResponseToChatMessage(aiResponse: FriendlyAIResponse): ChatMessage {
+        return ChatMessage(
+            id = "ai_${System.currentTimeMillis()}",
+            content = aiResponse.message,
+            type = MessageType.AI,
+            supportingData = aiResponse.supportingData,
+            recommendations = aiResponse.actionableRecommendations,
+            celebrationElements = aiResponse.celebrationElements,
+            emojis = aiResponse.emojis,
+            tone = aiResponse.tone
+        )
+    }
+    
+    /**
+     * Update user financial context (called when new financial data is available)
+     */
+    fun updateUserFinancialContext(context: UserFinancialContext) {
+        this.userFinancialContext = context
+    }
+    
+    /**
+     * Get current conversation context
+     */
+    fun getConversationContext(): ConversationContext = conversationContext
+}

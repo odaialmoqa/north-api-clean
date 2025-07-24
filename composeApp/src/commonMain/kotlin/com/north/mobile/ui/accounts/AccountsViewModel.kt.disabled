@@ -1,0 +1,215 @@
+package com.north.mobile.ui.accounts
+
+import androidx.compose.runtime.*
+import com.north.mobile.data.plaid.PlaidIntegrationService
+import com.north.mobile.data.plaid.SimplePlaidAccount
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+
+class AccountsViewModel(
+    private val plaidService: PlaidIntegrationService,
+    private val scope: CoroutineScope
+) {
+    var accounts by mutableStateOf<List<SimplePlaidAccount>>(emptyList())
+        private set
+    
+    var isLoading by mutableStateOf(false)
+        private set
+    
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+    
+    var syncingAccountIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+    
+    var lastSyncTime by mutableStateOf<Long?>(null)
+        private set
+    
+    var connectionHealth by mutableStateOf<ConnectionHealth>(ConnectionHealth.Unknown)
+        private set
+    
+    init {
+        loadAccounts()
+    }
+    
+    fun loadAccounts() {
+        scope.launch(Dispatchers.Main) {
+            isLoading = true
+            errorMessage = null
+            
+            try {
+                accounts = plaidService.getAccounts("current_user")
+                lastSyncTime = System.currentTimeMillis()
+                updateConnectionHealth()
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to load accounts"
+                connectionHealth = ConnectionHealth.Critical
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    private fun updateConnectionHealth() {
+        connectionHealth = when {
+            accounts.isEmpty() -> ConnectionHealth.Unknown
+            accounts.all { it.connectionStatus == com.north.mobile.data.plaid.PlaidConnectionStatus.HEALTHY } -> ConnectionHealth.Excellent
+            accounts.count { it.connectionStatus == com.north.mobile.data.plaid.PlaidConnectionStatus.HEALTHY } >= accounts.size * 0.8 -> ConnectionHealth.Good
+            accounts.count { it.connectionStatus == com.north.mobile.data.plaid.PlaidConnectionStatus.HEALTHY } >= accounts.size * 0.5 -> ConnectionHealth.Warning
+            else -> ConnectionHealth.Critical
+        }
+    }
+    
+    fun connectAccount(onSuccess: (String) -> Unit, onError: (String) -> Unit) {
+        scope.launch(Dispatchers.Main) {
+            isLoading = true
+            errorMessage = null
+            
+            try {
+                val linkResult = plaidService.initializePlaidLink()
+                if (linkResult.success && linkResult.publicToken != null) {
+                    onSuccess(linkResult.publicToken)
+                } else {
+                    onError(linkResult.error ?: "Failed to initialize Plaid Link")
+                }
+            } catch (e: Exception) {
+                onError(e.message ?: "Failed to connect account")
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    fun exchangePublicToken(publicToken: String) {
+        scope.launch(Dispatchers.Main) {
+            isLoading = true
+            errorMessage = null
+            
+            try {
+                val result = plaidService.exchangePublicToken(publicToken)
+                if (result.success) {
+                    // Refresh accounts list
+                    loadAccounts()
+                } else {
+                    errorMessage = result.error ?: "Failed to connect account"
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to exchange token"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    fun reconnectAccount(accountId: String) {
+        scope.launch(Dispatchers.Main) {
+            isLoading = true
+            errorMessage = null
+            
+            try {
+                val result = plaidService.refreshAccountConnection(accountId)
+                if (result.success) {
+                    loadAccounts()
+                } else {
+                    errorMessage = result.error ?: "Failed to reconnect account"
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to reconnect account"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    fun disconnectAccount(accountId: String) {
+        scope.launch(Dispatchers.Main) {
+            isLoading = true
+            errorMessage = null
+            
+            try {
+                val success = plaidService.disconnectAccount(accountId)
+                if (success) {
+                    loadAccounts()
+                } else {
+                    errorMessage = "Failed to disconnect account"
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to disconnect account"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    fun syncTransactions(accountId: String) {
+        scope.launch(Dispatchers.Main) {
+            syncingAccountIds = syncingAccountIds + accountId
+            
+            try {
+                val result = plaidService.syncTransactions(accountId)
+                if (!result.success) {
+                    errorMessage = result.error ?: "Failed to sync transactions"
+                } else {
+                    // Update the specific account's sync time
+                    accounts = accounts.map { account ->
+                        if (account.id == accountId) {
+                            account.copy(lastSyncTime = System.currentTimeMillis())
+                        } else {
+                            account
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to sync transactions"
+            } finally {
+                syncingAccountIds = syncingAccountIds - accountId
+            }
+        }
+    }
+    
+    fun syncAllAccounts() {
+        scope.launch(Dispatchers.Main) {
+            isLoading = true
+            errorMessage = null
+            
+            try {
+                accounts.forEach { account ->
+                    if (account.connectionStatus == com.north.mobile.data.plaid.PlaidConnectionStatus.HEALTHY) {
+                        syncTransactions(account.id)
+                    }
+                }
+                lastSyncTime = System.currentTimeMillis()
+                updateConnectionHealth()
+            } catch (e: Exception) {
+                errorMessage = e.message ?: "Failed to sync accounts"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+    
+    fun getAccountById(accountId: String): SimplePlaidAccount? {
+        return accounts.find { it.id == accountId }
+    }
+    
+    fun isAccountSyncing(accountId: String): Boolean {
+        return syncingAccountIds.contains(accountId)
+    }
+    
+    fun getHealthyAccountsCount(): Int {
+        return accounts.count { it.connectionStatus == com.north.mobile.data.plaid.PlaidConnectionStatus.HEALTHY }
+    }
+    
+    fun getAccountsNeedingAttention(): List<SimplePlaidAccount> {
+        return accounts.filter { it.connectionStatus != com.north.mobile.data.plaid.PlaidConnectionStatus.HEALTHY }
+    }
+    
+    fun getTotalBalance(): Double {
+        return accounts.sumOf { it.balance }
+    }
+    
+    fun clearError() {
+        errorMessage = null
+    }
+}

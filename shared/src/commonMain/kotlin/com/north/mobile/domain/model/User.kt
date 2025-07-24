@@ -10,19 +10,28 @@ import kotlinx.datetime.LocalDate
 data class User(
     val id: String,
     val email: String,
-    val profile: UserProfile,
-    val preferences: UserPreferences,
-    val gamificationData: GamificationProfile
+    val firstName: String,
+    val lastName: String,
+    val isActive: Boolean = true,
+    val profile: UserProfile? = null,
+    val preferences: UserPreferences? = null,
+    val gamificationData: GamificationProfile? = null
 ) {
     fun validate(): ValidationResult {
         val validations = listOf(
             if (id.isNotBlank()) ValidationResult.Valid else ValidationResult.Invalid("User ID cannot be blank"),
             if (ValidationUtils.isValidEmail(email)) ValidationResult.Valid else ValidationResult.Invalid("Invalid email format"),
-            profile.validate(),
-            preferences.validate()
+            if (firstName.isNotBlank()) ValidationResult.Valid else ValidationResult.Invalid("First name cannot be blank"),
+            if (lastName.isNotBlank()) ValidationResult.Valid else ValidationResult.Invalid("Last name cannot be blank")
         )
         return validations.combine()
     }
+    
+    val fullName: String
+        get() = "$firstName $lastName"
+    
+    val displayName: String
+        get() = firstName
 }
 
 @Serializable

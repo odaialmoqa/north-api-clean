@@ -105,3 +105,18 @@ North is an intelligent personal finance partner designed specifically for Canad
 3. WHEN unusual spending is detected THEN the system SHALL alert users and ask for confirmation or categorization
 4. WHEN generating insights THEN the system SHALL compare user spending to Canadian averages and best practices
 5. IF categorization is incorrect THEN users SHALL be able to easily correct and train the system
+
+### Requirement 9
+
+**User Story:** As a user seeking financial guidance, I want to have natural conversations with an AI financial advisor that feels like a caring friend, so that I can get personalized advice without feeling judged or overwhelmed by robotic responses.
+
+#### Acceptance Criteria
+
+1. WHEN I interact with the AI advisor THEN it SHALL communicate in a warm, friendly, and conversational tone that feels like talking to a knowledgeable friend
+2. WHEN the AI provides financial advice THEN it SHALL explain complex concepts in simple, relatable terms without using jargon or robotic language
+3. WHEN I ask about affordability or spending decisions THEN the AI SHALL provide personalized analysis based on my actual financial data with encouraging and supportive messaging
+4. WHEN the AI makes recommendations THEN it SHALL explain the reasoning in a caring way that builds confidence rather than creating anxiety
+5. WHEN I start a conversation THEN the AI SHALL greet me personally and offer conversation starters that feel natural and inviting
+6. WHEN the AI responds to questions THEN it SHALL use emojis, friendly language, and positive reinforcement to make the interaction feel human and supportive
+7. WHEN I achieve financial milestones THEN the AI SHALL celebrate with me in an enthusiastic and genuine way
+8. IF I'm struggling with financial decisions THEN the AI SHALL provide gentle guidance and encouragement without being preachy or judgmental

@@ -137,15 +137,17 @@ interface GoalService {
 }
 ```
 
-#### 6. North AI Chat Service
+#### 6. North AI Financial Friend Service
 ```kotlin
 interface NorthAIService {
-    suspend fun processUserQuery(query: String, context: UserFinancialContext): AIResponse
-    suspend fun generatePersonalizedInsights(): List<AIInsight>
-    suspend fun analyzeSpendingPattern(category: String, timeframe: DateRange): SpendingAnalysis
-    suspend fun checkAffordability(expense: ExpenseRequest): AffordabilityResult
-    suspend fun explainTransaction(transactionId: String): TransactionExplanation
-    suspend fun suggestOptimizations(): List<OptimizationSuggestion>
+    suspend fun processUserQuery(query: String, context: UserFinancialContext): FriendlyAIResponse
+    suspend fun generatePersonalizedInsights(): List<FriendlyInsight>
+    suspend fun analyzeSpendingPattern(category: String, timeframe: DateRange): FriendlySpendingAnalysis
+    suspend fun checkAffordability(expense: ExpenseRequest): FriendlyAffordabilityResult
+    suspend fun explainTransaction(transactionId: String): FriendlyTransactionExplanation
+    suspend fun suggestOptimizations(): List<FriendlyOptimizationSuggestion>
+    suspend fun generateConversationStarters(): List<ConversationStarter>
+    suspend fun celebrateAchievement(achievement: Achievement): CelebrationMessage
 }
 
 data class UserFinancialContext(
@@ -153,23 +155,42 @@ data class UserFinancialContext(
     val recentTransactions: List<Transaction>,
     val goals: List<FinancialGoal>,
     val budgets: List<Budget>,
-    val userPreferences: UserPreferences
+    val userPreferences: UserPreferences,
+    val userName: String,
+    val recentAchievements: List<Achievement>
 )
 
-data class AIResponse(
+data class FriendlyAIResponse(
     val message: String,
-    val confidence: Float,
-    val supportingData: List<DataPoint>,
-    val actionableRecommendations: List<Recommendation>,
-    val followUpQuestions: List<String>
+    val tone: ConversationTone,
+    val supportingData: List<FriendlyDataPoint>,
+    val actionableRecommendations: List<FriendlyRecommendation>,
+    val followUpQuestions: List<String>,
+    val celebrationElements: List<CelebrationElement>
 )
 
-data class AffordabilityResult(
+data class FriendlyAffordabilityResult(
     val canAfford: Boolean,
-    val impactOnGoals: GoalImpactAnalysis,
-    val alternativeOptions: List<Alternative>,
-    val reasoning: String
+    val encouragingMessage: String,
+    val impactOnGoals: FriendlyGoalImpactAnalysis,
+    val alternativeOptions: List<FriendlyAlternative>,
+    val supportiveReasoning: String,
+    val celebrationLevel: CelebrationType
 )
+
+data class ConversationStarter(
+    val text: String,
+    val category: ConversationCategory,
+    val personalizedContext: String
+)
+
+enum class ConversationTone {
+    ENCOURAGING, CELEBRATORY, SUPPORTIVE, GENTLE_GUIDANCE, EXCITED
+}
+
+enum class CelebrationType {
+    NONE, GENTLE_PRAISE, ENTHUSIASTIC, MILESTONE_CELEBRATION
+}
 ```
 
 ### User Interface Components
@@ -459,81 +480,142 @@ data class AffordabilityResult(
 │ [🏠] [📊] [🎯] [💳] [👤]           │
 └─────────────────────────────────────┘
 
-#### 7. North AI Chat Interface
+#### 7. Friendly AI Financial Advisor Interface
 
 ```
 ┌─────────────────────────────────────┐
-│ Chat with North          [🧠]       │
+│ Your Financial Friend       [💝]    │
 ├─────────────────────────────────────┤
 │                                     │
-│ 🤖 North                            │
-│ Hi Alex! I'm your personal CFO.     │
-│ I've analyzed your finances and     │
-│ I'm here to help. What would you    │
-│ like to know?                       │
+│ ╭─────────────────────────────────╮ │
+│ │ 👋 Hey Alex!                    │ │
+│ │                                 │ │
+│ │ I've been looking at your       │ │
+│ │ finances and I'm really excited │ │
+│ │ about your progress! You're     │ │
+│ │ doing so well with your savings │ │
+│ │ goals. 🎉                       │ │
+│ │                                 │ │
+│ │ What's on your mind today?      │ │
+│ │ I'm here to help! 😊            │ │
+│ ╰─────────────────────────────────╯ │
 │                                     │
-│ 👤 You                              │
-│ Can I afford a $400 weekend trip    │
-│ to Montreal next month?             │
+│ 💭 What would you like to chat     │
+│    about?                           │
 │                                     │
-│ 🤖 North                            │
-│ Based on your spending patterns     │
-│ and current savings rate, yes! 🎉   │
+│ ╭─────────────────────────────────╮ │
+│ │ 💸 "Can I afford something?"    │ │
+│ ╰─────────────────────────────────╯ │
 │                                     │
-│ Here's what I found:                │
-│ • Your entertainment budget has     │
-│   $180 available                    │
-│ • You're $125 ahead on your        │
-│   emergency fund goal               │
-│ • Your dining out spending is       │
-│   down 15% this month               │
+│ ╭─────────────────────────────────╮ │
+│ │ 🎯 "How are my goals doing?"    │ │
+│ ╰─────────────────────────────────╯ │
 │                                     │
-│ Recommendation: Book it! This       │
-│ won't impact your financial goals.  │
+│ ╭─────────────────────────────────╮ │
+│ │ 💡 "Help me save more money"    │ │
+│ ╰─────────────────────────────────╯ │
 │                                     │
-│ [💬 Type your question...]          │
+│ ╭─────────────────────────────────╮ │
+│ │ 📊 "Explain my spending"        │ │
+│ ╰─────────────────────────────────╯ │
 │                                     │
-│ Quick Questions:                    │
-│ • "How much can I spend on...?"     │
-│ • "When will I reach my goal?"      │
-│ • "What should I focus on?"         │
+│ ┌─────────────────────────────────┐ │
+│ │ 💬 Ask me anything...           │ │
+│ │                            [→] │ │
+│ └─────────────────────────────────┘ │
+│                                     │
+│ [🏠] [📊] [🎯] [💳] [👤]           │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│ Your Financial Friend       [💝]    │
+├─────────────────────────────────────┤
+│                                     │
+│                    ╭─────────────╮  │
+│                    │ Can I afford │  │
+│                    │ a $400       │  │
+│                    │ weekend trip │  │
+│                    │ to Montreal? │  │
+│                    ╰─────────────╯  │
+│                                     │
+│ ╭─────────────────────────────────╮ │
+│ │ 👋 Ooh, Montreal! I love that   │ │
+│ │ city! Let me check your         │ │
+│ │ finances... 🤔                  │ │
+│ │                                 │ │
+│ │ *drums fingers excitedly* 🥁     │ │
+│ │                                 │ │
+│ │ YES! You can totally do this!   │ │
+│ │ 🎉✨                            │ │
+│ │                                 │ │
+│ │ Here's why I'm so excited       │ │
+│ │ for you:                        │ │
+│ │                                 │ │
+│ │ ✅ Your entertainment budget    │ │
+│ │    has $180 sitting there       │ │
+│ │ ✅ You're actually $125 AHEAD   │ │
+│ │    on your emergency fund! 🙌   │ │
+│ │ ✅ You've been so good with     │ │
+│ │    dining out - down 15%!       │ │
+│ │                                 │ │
+│ │ Honestly? Book that trip! You   │ │
+│ │ deserve it and it won't hurt    │ │
+│ │ your goals at all. Have fun! 🥳 │ │
+│ ╰─────────────────────────────────╯ │
+│                                     │
+│ 💭 Want to talk about anything     │
+│    else?                           │
+│                                     │
+│ ┌─────────────────────────────────┐ │
+│ │ 💬 Ask me anything...           │ │
+│ │                            [→] │ │
+│ └─────────────────────────────────┘ │
 │ • "Am I on track this month?"       │
 │                                     │
 │ [🏠] [📊] [🎯] [💳] [👤]           │
 └─────────────────────────────────────┘
 
 ┌─────────────────────────────────────┐
-│ Chat with North          [🧠]       │
+│ Your Financial Friend       [💝]    │
 ├─────────────────────────────────────┤
 │                                     │
-│ 👤 You                              │
-│ Why did I spend so much on          │
-│ groceries last week?                │
+│                    ╭─────────────╮  │
+│                    │ Why did I    │  │
+│                    │ spend so     │  │
+│                    │ much on      │  │
+│                    │ groceries    │  │
+│                    │ last week?   │  │
+│                    ╰─────────────╯  │
 │                                     │
-│ 🤖 North                            │
-│ Great question! I noticed some      │
-│ unusual patterns in your grocery    │
-│ spending last week:                 │
-│                                     │
-│ 📊 Analysis:                        │
-│ • $127 vs usual $85/week           │
-│ • 3 trips to Metro vs usual 1      │
-│ • Large purchase on Nov 15th       │
-│                                     │
-│ 🔍 I found these transactions:      │
-│ • Nov 15: Metro - $67 (bulk buy?)  │
-│ • Nov 17: Loblaws - $38            │
-│ • Nov 19: Metro - $22              │
-│                                     │
-│ 💡 Insight: The Nov 15th purchase   │
-│ included household items (cleaning  │
-│ supplies, toiletries) which        │
-│ explains the spike.                 │
-│                                     │
-│ This is actually smart budgeting -  │
-│ you stocked up on essentials! 👍    │
-│                                     │
-│ [💬 Ask another question...]        │
+│ ╭─────────────────────────────────╮ │
+│ │ 👋 Oh, I was wondering about    │ │
+│ │ that too! Let me be your        │ │
+│ │ financial detective 🕵️‍♀️          │ │
+│ │                                 │ │
+│ │ So here's what I found:         │ │
+│ │                                 │ │
+│ │ 📊 You spent $127 vs your       │ │
+│ │    usual $85/week               │ │
+│ │                                 │ │
+│ │ 🔍 But wait! I dug deeper...    │ │
+│ │                                 │ │
+│ │ Nov 15: Metro - $67             │ │
+│ │ (This was the big one!)         │ │
+│ │ Nov 17: Loblaws - $38           │ │
+│ │ Nov 19: Metro - $22             │ │
+│ │                                 │ │
+│ │ 💡 Aha! That Nov 15th trip      │ │
+│ │ included cleaning supplies and  │ │
+│ │ toiletries - not just food!     │ │
+│ │                                 │ │
+│ │ You were actually being super   │ │
+│ │ smart by stocking up on         │ │
+│ │ essentials! That's not          │ │
+│ │ overspending - that's good      │ │
+│ │ planning! 👏                    │ │
+│ │                                 │ │
+│ │ Mystery solved! 🎉              │ │
+│ ╰─────────────────────────────────╯ │
 │                                     │
 │ [🏠] [📊] [🎯] [💳] [👤]           │
 └─────────────────────────────────────┘

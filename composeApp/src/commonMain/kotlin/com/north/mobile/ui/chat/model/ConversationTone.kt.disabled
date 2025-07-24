@@ -1,0 +1,21 @@
+package com.north.mobile.ui.chat.model
+
+/**
+ * Defines the tone of the conversation
+ */
+enum class ConversationTone {
+    // Professional and formal tone
+    PROFESSIONAL,
+    
+    // Warm and friendly tone (default)
+    WARM_FRIENDLY,
+    
+    // Encouraging and motivational tone
+    ENCOURAGING,
+    
+    // Direct and to-the-point tone
+    DIRECT,
+    
+    // Empathetic and understanding tone
+    EMPATHETIC
+}

@@ -131,23 +131,25 @@
   - Create gamification dashboard with current status
   - _Requirements: 4.3, 4.5, 4.6_
 
-## North AI Chat System
+## Friendly AI Financial Advisor System
 
-- [x] 16. Implement North AI conversational interface
-  - Create natural language processing pipeline for financial queries
-  - Build contextual AI service with access to user financial data
-  - Implement affordability analysis for expense requests
-  - Add transaction explanation and spending pattern analysis
-  - Create personalized insight generation based on user data
-  - _Requirements: 3.3, 8.2, 8.3_
+- [x] 16. Implement North AI friendly conversational service
+  - Create NorthAIService interface with friendly response models (FriendlyAIResponse, ConversationTone, CelebrationType)
+  - Build natural language processing pipeline that generates warm, caring responses
+  - Implement affordability analysis that provides encouraging and supportive messaging
+  - Add transaction explanation service that tells engaging financial detective stories
+  - Create personalized insight generation with celebratory and enthusiastic tone
+  - Build conversation starter generation system for natural chat initiation
+  - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.8_
 
-- [x] 17. Build AI chat UI and conversation management
-  - Create conversational chat interface with message history
-  - Implement quick question templates and suggestions
-  - Add typing indicators and response animations
-  - Build conversation context management and memory
-  - Create AI response formatting with data visualizations
-  - _Requirements: 2.2, 3.3_
+- [x] 17. Build friendly AI chat UI with caring conversation experience
+  - Create "Your Financial Friend" chat interface with heart icon and warm colors
+  - Implement rounded chat bubbles with friendly visual design (no robot icons)
+  - Build conversation starter buttons that feel natural and inviting
+  - Add enthusiastic response animations and celebratory elements (confetti, emojis)
+  - Create personalized greeting system that addresses user by name
+  - Implement supportive message formatting with encouraging language and positive reinforcement
+  - _Requirements: 9.1, 9.5, 9.6, 9.7_
 
 ## Mobile UI Implementation
 

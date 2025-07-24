@@ -1,0 +1,213 @@
+package com.north.mobile.ui.chat
+
+import androidx.compose.runtime.*
+import com.north.mobile.ui.chat.model.*
+import com.north.mobile.data.ai.*
+import com.north.mobile.data.plaid.PlaidIntegrationService
+import kotlinx.coroutines.*
+
+/**
+ * Enhanced ViewModel for managing AI CFO chat state and interactions with financial data
+ */
+class ChatViewModel(
+    private val plaidService: PlaidIntegrationService? = null
+) {
+    private val _chatState = mutableStateOf(ChatState())
+    val chatState: State<ChatState> = _chatState
+    
+    // Initialize AI CFO service
+    private val aiCFOService: AICFOServiceInterface = EnhancedAICFOService()
+    
+    private val coroutineScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var isInOnboardingMode = true
+    
+    init {
+        initializeChat()
+    }
+    
+    /**
+     * Initialize the chat with AI CFO welcome message
+     */
+    private fun initializeChat() {
+        coroutineScope.launch {
+            try {
+                _chatState.value = _chatState.value.copy(isLoading = true)
+                
+                // Create initial conversation context
+                val context = ConversationContext(
+                    userId = "user_${System.currentTimeMillis()}",
+                    userName = _chatState.value.userName
+                )
+                
+                // Create empty financial context (will be populated later)
+                val financialContext = UserFinancialContext(
+                    userId = context.userId,
+                    hasConnectedAccounts = false,
+                    hasActiveGoals = false,
+                    hasRecentTransactions = false
+                )
+                
+                // Get welcome message
+                val welcomeMessage = ChatMessage(
+                    id = "welcome_${System.currentTimeMillis()}",
+                    content = "Hello ${context.userName}! I'm your AI CFO. How can I help you with your finances today?",
+                    type = MessageType.AI
+                )
+                
+                // Get conversation starters
+                val starters = getDefaultConversationStarters()
+                
+                _chatState.value = _chatState.value.copy(
+                    messages = listOf(welcomeMessage),
+                    conversationStarters = starters,
+                    isLoading = false,
+                    showConversationStarters = true
+                )
+            } catch (e: Exception) {
+                _chatState.value = _chatState.value.copy(
+                    isLoading = false,
+                    error = "Failed to initialize chat: ${e.message}"
+                )
+            }
+        }
+    }
+    
+    /**
+     * Send a user message and get AI CFO response
+     */
+    fun sendMessage(message: String) {
+        if (message.isBlank() || _chatState.value.isLoading) return
+        
+        coroutineScope.launch {
+            try {
+                // Add user message to chat
+                val userMessage = ChatMessage(
+                    id = "user_${System.currentTimeMillis()}",
+                    content = message,
+                    type = MessageType.USER
+                )
+                
+                _chatState.value = _chatState.value.copy(
+                    messages = _chatState.value.messages + userMessage,
+                    isLoading = true,
+                    showConversationStarters = false,
+                    error = null
+                )
+                
+                // Create conversation context
+                val context = ConversationContext(
+                    userId = "user_${System.currentTimeMillis()}",
+                    userName = _chatState.value.userName
+                )
+                
+                // Create financial context (simplified for now)
+                val financialContext = UserFinancialContext(
+                    userId = context.userId,
+                    hasConnectedAccounts = false,
+                    hasActiveGoals = false,
+                    hasRecentTransactions = false
+                )
+                
+                // Process message with AI CFO service
+                val aiResponse = aiCFOService.processUserMessage(
+                    message = message,
+                    context = context,
+                    financialContext = financialContext
+                )
+                
+                // Update conversation starters if still in onboarding
+                val updatedStarters = if (isInOnboardingMode) {
+                    getDefaultConversationStarters()
+                } else {
+                    emptyList()
+                }
+                
+                _chatState.value = _chatState.value.copy(
+                    messages = _chatState.value.messages + aiResponse,
+                    conversationStarters = updatedStarters,
+                    isLoading = false,
+                    showConversationStarters = isInOnboardingMode && updatedStarters.isNotEmpty()
+                )
+                
+            } catch (e: Exception) {
+                _chatState.value = _chatState.value.copy(
+                    isLoading = false,
+                    error = "Failed to send message: ${e.message}"
+                )
+            }
+        }
+    }
+    
+    /**
+     * Handle quick question tap (conversation starters)
+     */
+    fun handleQuickQuestion(quickQuestion: ConversationStarter) {
+        sendMessage(quickQuestion.text)
+    }
+    
+    /**
+     * Clear error message
+     */
+    fun clearError() {
+        _chatState.value = _chatState.value.copy(error = null)
+    }
+    
+    /**
+     * Update user name
+     */
+    fun updateUserName(userName: String) {
+        _chatState.value = _chatState.value.copy(userName = userName)
+        // Reinitialize chat with new user name
+        initializeChat()
+    }
+    
+    /**
+     * Check if user is in onboarding
+     */
+    fun isInOnboarding(): Boolean = isInOnboardingMode
+    
+    /**
+     * Get current onboarding step
+     */
+    fun getCurrentOnboardingStep(): com.north.mobile.ui.onboarding.OnboardingStep = 
+        if (isInOnboardingMode) com.north.mobile.ui.onboarding.OnboardingStep.WELCOME 
+        else com.north.mobile.ui.onboarding.OnboardingStep.COMPLETED
+    
+    /**
+     * Clean up resources
+     */
+    fun dispose() {
+        coroutineScope.cancel()
+    }
+    
+    companion object {
+        /**
+         * Get default conversation starters
+         */
+        fun getDefaultConversationStarters(): List<ConversationStarter> {
+            return listOf(
+                ConversationStarter(
+                    id = "spending_insights",
+                    text = "Show me my spending insights",
+                    category = ConversationCategory.SPENDING_INSIGHTS,
+                    emoji = "📊",
+                    priority = 1
+                ),
+                ConversationStarter(
+                    id = "savings_advice",
+                    text = "How can I save more money?",
+                    category = ConversationCategory.SAVINGS_ADVICE,
+                    emoji = "💰",
+                    priority = 1
+                ),
+                ConversationStarter(
+                    id = "goal_setting",
+                    text = "Help me set a financial goal",
+                    category = ConversationCategory.GOAL_CREATION,
+                    emoji = "🎯",
+                    priority = 2
+                )
+            )
+        }
+    }
+}
