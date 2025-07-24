@@ -23,28 +23,17 @@ import com.north.mobile.ui.profile.PrivacySettingsScreen
 import com.north.mobile.ui.profile.DataManagementScreen
 import com.north.mobile.ui.accounts.ConnectedAccountsScreen
 import com.north.mobile.ui.accounts.SimpleAccountConnectionScreen
+import com.north.mobile.ui.chat.SimpleChatScreen
+import com.north.mobile.ui.dashboard.DashboardScreen
 import com.north.mobile.ui.accounts.AccountConnectionScreen
 import com.north.mobile.ui.accounts.AccountDetailsScreen
 import com.north.mobile.ui.accounts.AccountConnectionViewModel
 import com.north.mobile.data.auth.SessionManagerImpl
 import com.north.mobile.data.plaid.PlaidIntegrationServiceImpl
 import com.north.mobile.data.api.ApiClient
-import kotlinx.coroutines.launch
 import com.north.mobile.data.plaid.AndroidPlaidIntegrationService
-import androidx.lifecycle.lifecycleScope
 import androidx.compose.ui.platform.LocalContext
-import com.plaid.link.Plaid
-import com.plaid.link.PlaidHandler
-import com.plaid.link.configuration.LinkTokenConfiguration
-import com.plaid.link.result.LinkSuccess
-import com.plaid.link.result.LinkExit
-import androidx.appcompat.app.AppCompatActivity
-import android.content.Intent
-
-class MainActivity : AppCompatActivity() {
-    private var pendingPlaidResult: ((String?) -> Unit)? = null
-    private lateinit var plaidHandler: PlaidHandler
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -53,35 +42,9 @@ class MainActivity : AppCompatActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    NorthApp(
-                        onLaunchPlaidLink = { linkToken, onResult ->
-                            pendingPlaidResult = onResult
-                            val apiClient = ApiClient()
-                            val backendPlaidService = PlaidIntegrationServiceImpl(apiClient) { null }
-                            val config = LinkTokenConfiguration.Builder().token(linkToken).build()
-                            plaidHandler = Plaid.create(application, config)
-                            plaidHandler.open(this@MainActivity)
-                        }
-                    )
+                    NorthApp()
                 }
             }
-        }
-    }
-
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        val result = Plaid.onActivityResult(requestCode, resultCode, data)
-        if (result != null) {
-            when (result) {
-                is LinkSuccess -> {
-                    val publicToken = result.publicToken
-                    pendingPlaidResult?.invoke(publicToken)
-                }
-                is LinkExit -> {
-                    pendingPlaidResult?.invoke(null)
-                }
-            }
-            pendingPlaidResult = null
         }
     }
 }
@@ -169,7 +132,11 @@ fun NorthApp(onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)? = null) {
             )
         }
         composable("dashboard") {
-            DashboardScreen()
+            DashboardScreen(
+                onNavigateToChat = {
+                    navController.navigate("ai_chat")
+                }
+            )
         }
         composable("profile") {
             // Initialize dependencies for ProfileViewModel
@@ -297,11 +264,15 @@ fun NorthApp(onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)? = null) {
             )
         }
         
+        composable("ai_chat") {
+            SimpleChatScreen(
+                onBackClick = {
+                    navController.popBackStack()
+                }
+            )
+        }
+        
 
     }
 }
 
-@Composable
-fun DashboardScreen() {
-    com.north.mobile.ui.dashboard.DashboardScreen()
-}

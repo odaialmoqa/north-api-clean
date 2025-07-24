@@ -324,25 +324,25 @@ app.get('/api/goals', authenticateToken, async (req, res) => {
   }
 });
 
-// AI CFO Chat endpoint - Enhanced for Personal CFO experience
+// AI CFO Chat endpoint - Enhanced for Personal CFO experience with memory
 app.post('/api/ai/chat', authenticateToken, async (req, res) => {
   try {
-    const { message, context, onboardingStep } = req.body;
+    const { message, conversationHistory = [], context, onboardingStep } = req.body;
     const userId = req.user.userId;
     
     // Get user info for personalization
     const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
     const userName = userResult.rows[0]?.first_name || 'there';
     
-    // Enhanced AI CFO response based on onboarding step and context
+    // Enhanced AI CFO response with conversation memory
     let aiResponse;
     
     if (onboardingStep && onboardingStep !== 'COMPLETED') {
       // Handle onboarding conversation
       aiResponse = generateOnboardingResponse(message, onboardingStep, context, userName);
     } else {
-      // Handle regular AI CFO conversation
-      aiResponse = generateRegularCFOResponse(message, context, userId, userName);
+      // Handle regular AI CFO conversation with memory
+      aiResponse = generateRegularCFOResponse(message, conversationHistory, context, userId, userName);
     }
     
     res.json(aiResponse);
@@ -579,74 +579,116 @@ function getGoalsDiscoveryResponse(lowerMessage) {
   }
 }
 
-// Helper function to generate regular CFO responses
-function generateRegularCFOResponse(message, context, userId) {
+// Helper function to generate regular CFO responses with memory
+function generateRegularCFOResponse(message, conversationHistory, context, userId, userName) {
   const lowerMessage = message.toLowerCase();
+  const messageCount = conversationHistory.length;
+  const previousMessages = conversationHistory.slice(-3).map(msg => msg.message?.toLowerCase() || '');
+  
+  // Create varied responses based on conversation history
+  const responses = {
+    greetings: [
+      `Hey ${userName}! 👋 Great to see you again! What's on your financial mind today?`,
+      `Hi there! 😊 I've been thinking about your financial journey - how can I help you today?`,
+      `Welcome back! 🌟 Ready to tackle some financial goals together?`
+    ],
+    goals: [
+      `I love that you're focused on your goals! 🎯 You're currently working on your emergency fund ($8,500/$10,000) and your vacation fund ($1,200/$3,000). Which one would you like to dive into?`,
+      `Your goal progress is looking fantastic! 📈 Your emergency fund is at 85% - so close to that finish line! Want to talk about strategies to reach that final $1,500?`,
+      `Goals are where the magic happens! ✨ I see you're making steady progress. What's motivating you most about your current goals?`
+    ],
+    spending: [
+      `Let me put on my detective hat! 🕵️‍♀️ I've been analyzing your spending patterns and found some interesting insights...`,
+      `Your spending story is actually quite positive! 📊 You're down 15% on dining out this month - that's fantastic progress!`,
+      `I love diving into spending patterns with you! 💡 Here's what I'm seeing in your recent transactions...`
+    ],
+    affordability: [
+      `Ooh, thinking about a purchase? 🛍️ I'm excited to help you figure this out! What's caught your eye?`,
+      `Purchase decisions are my favorite! 💝 Tell me what you're considering and I'll help you see if it fits your budget comfortably.`,
+      `Let's be smart about this together! 🧠 What are you thinking of buying? I'll check how it impacts your goals.`
+    ],
+    general: [
+      `I'm here and ready to help with whatever's on your mind! 😊 Whether it's budgeting, goals, or just financial encouragement - what sounds good?`,
+      `Thanks for chatting with me! 💬 I love being part of your financial journey. What would you like to explore today?`,
+      `You always ask such thoughtful questions! 🤔 How can I support your financial success today?`
+    ]
+  };
+  
+  // Determine response category and avoid repetition
+  let responseCategory = 'general';
+  let responseArray = responses.general;
   
   if (lowerMessage.includes('goal')) {
-    return {
-      message: "I love that you're thinking about your goals! 🎯 Based on what we discussed during our initial chat, you're working toward some really exciting things!\n\nLet me check on your progress and see how you're doing. What specific goal would you like to talk about today?",
-      tone: 'ENCOURAGING',
-      supportingData: [
-        {
-          label: 'Active Goals',
-          value: '3 goals in progress',
-          friendlyExplanation: "You're actively working on multiple goals - that's fantastic!",
-          encouragingContext: 'Multi-goal focus shows great financial discipline! 💪',
-          emoji: '🎯'
-        }
-      ],
-      actionableRecommendations: [
-        {
-          id: 'goal_check_1',
-          title: 'Review Goal Progress',
-          friendlyDescription: "Let's look at how close you are to reaching your targets",
-          motivationalReason: 'Seeing your progress will give you that motivation boost!',
-          emoji: '📈'
-        }
-      ],
-      followUpQuestions: [
-        'Show me my emergency fund progress',
-        'How am I doing with my savings goal?',
-        'Can I add a new goal?',
-        'Help me adjust an existing goal'
-      ],
-      emojis: ['🎯', '💫', '🚀']
-    };
+    responseCategory = 'goals';
+    responseArray = responses.goals;
   } else if (lowerMessage.includes('spend') || lowerMessage.includes('spending')) {
-    return {
-      message: "Great question! Understanding your spending is such a smart move! 📊 Let me break down what I'm seeing from your recent transactions...\n\nYou're actually doing better than you might think! Here's what stands out to me:",
-      tone: 'SUPPORTIVE',
-      supportingData: [
-        {
-          label: "This Month's Spending",
-          value: '$2,340',
-          friendlyExplanation: "You're tracking well within your typical range",
-          encouragingContext: "That's 5% less than last month - nice work! 👏",
-          emoji: '💳'
-        }
-      ],
-      followUpQuestions: [
-        'Show me more spending categories',
-        'How can I reduce dining expenses?',
-        'Compare to last month',
-        'Set up spending alerts'
-      ],
-      emojis: ['📊', '💡', '👏']
-    };
-  } else {
-    return {
-      message: "Thanks for sharing that with me! 😊 I love our conversations - you always give me such good insights into what matters to you.\n\nHow can I help you with your financial journey today? Whether it's checking on goals, understanding spending, or just getting some encouragement, I'm here for you!",
-      tone: 'WARM_FRIENDLY',
-      followUpQuestions: [
-        'Check my goal progress',
-        'Help me with a purchase decision', 
-        'Review my spending patterns',
-        'Give me some financial motivation'
-      ],
-      emojis: ['😊', '💬', '🤗']
-    };
+    responseCategory = 'spending';
+    responseArray = responses.spending;
+  } else if (lowerMessage.includes('afford') || lowerMessage.includes('buy') || lowerMessage.includes('purchase')) {
+    responseCategory = 'affordability';
+    responseArray = responses.affordability;
+  } else if (lowerMessage.includes('hello') || lowerMessage.includes('hi') || lowerMessage.includes('hey')) {
+    responseCategory = 'greetings';
+    responseArray = responses.greetings;
   }
+  
+  // Select response based on message count to avoid repetition
+  const responseIndex = messageCount % responseArray.length;
+  const selectedMessage = responseArray[responseIndex];
+  
+  // Add contextual follow-up questions based on conversation history
+  let followUpQuestions = [];
+  
+  if (responseCategory === 'goals') {
+    followUpQuestions = [
+      'How close am I to my emergency fund goal?',
+      'Should I prioritize my vacation fund?',
+      'Help me create a new savings goal',
+      'What if I want to adjust my timeline?'
+    ];
+  } else if (responseCategory === 'spending') {
+    followUpQuestions = [
+      'Show me my biggest spending categories',
+      'How can I optimize my grocery budget?',
+      'Are there subscriptions I should cancel?',
+      'Compare my spending to last month'
+    ];
+  } else if (responseCategory === 'affordability') {
+    followUpQuestions = [
+      'I want to buy something for $200',
+      'Can I afford a weekend getaway?',
+      'Help me plan for a big purchase',
+      'What\'s my discretionary spending budget?'
+    ];
+  } else {
+    followUpQuestions = [
+      'Check my financial goals progress',
+      'Analyze my recent spending patterns',
+      'Help me make a purchase decision',
+      'Give me some financial motivation'
+    ];
+  }
+  
+  return {
+    message: selectedMessage,
+    tone: 'WARM_FRIENDLY',
+    supportingData: [
+      {
+        label: 'Conversation',
+        value: `Message ${messageCount + 1}`,
+        friendlyExplanation: "We're building a great financial conversation!",
+        encouragingContext: 'I remember our previous chats and I\'m here to help! 💪',
+        emoji: '💬'
+      }
+    ],
+    followUpQuestions: followUpQuestions,
+    emojis: ['😊', '💝', '🎯'],
+    conversationContext: {
+      messageCount: messageCount,
+      category: responseCategory,
+      userName: userName
+    }
+  };
 }
 
 // Plaid Integration Endpoints

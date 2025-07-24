@@ -5,7 +5,7 @@ package com.north.mobile.data.api
  */
 object ApiConfig {
     // Update this URL to your deployed server
-    const val BASE_URL = "https://your-railway-app.railway.app/api/"
+    const val BASE_URL = "https://north-api-clean-production.up.railway.app/api/"
     
     // For local development, use:
     // const val BASE_URL = "http://10.0.2.2:3000/api/" // Android emulator
@@ -58,7 +58,7 @@ object Environment {
     val baseUrl: String
         get() = when (CURRENT) {
             DEVELOPMENT -> "http://10.0.2.2:3000/api/" // Local development
-            PRODUCTION -> "https://your-railway-app.railway.app/api/" // Production
+            PRODUCTION -> "https://north-api-clean-production.up.railway.app/api/" // Production
             else -> ApiConfig.BASE_URL
         }
 }
