@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.north.mobile.data.api.ChatMessage
+import com.north.mobile.ui.accounts.PlaidLinkButton
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -781,112 +782,20 @@ fun AccountsTabContent(paddingValues: PaddingValues) {
 
 @Composable
 fun PlaidConnectionCard() {
-    var isConnecting by remember { mutableStateOf(false) }
-    var connectionStatus by remember { mutableStateOf<String?>(null) }
-    
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF2563EB)),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = "Bank",
-                    tint = Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
-                Column {
-                    Text(
-                        "Connect Your Bank Account Securely",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        "Bank-grade security",
-                        fontSize = 12.sp,
-                        color = Color.White.copy(alpha = 0.8f)
-                    )
-                }
-            }
-            
-            Text(
-                "Securely connect your accounts so your Personal CFO can provide personalized advice based on your real spending patterns.",
-                color = Color.White.copy(alpha = 0.9f),
-                fontSize = 14.sp
-            )
-            
-            // Show connection status if any
-            connectionStatus?.let { status ->
-                Text(
-                    status,
-                    color = Color.White.copy(alpha = 0.9f),
-                    fontSize = 12.sp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Color.White.copy(alpha = 0.1f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(8.dp)
-                )
-            }
-            
-            Button(
-                onClick = {
-                    isConnecting = true
-                    connectionStatus = "Connecting to your bank..."
-                    
-                    // Connect to Plaid sandbox with real credentials
-                    kotlinx.coroutines.GlobalScope.launch {
-                        try {
-                            kotlinx.coroutines.delay(2000)
-                            connectionStatus = "✅ Successfully connected to TD Bank (Sandbox)\n• Checking Account: $2,458.32\n• Savings Account: $12,042.87"
-                            isConnecting = false
-                        } catch (e: Exception) {
-                            connectionStatus = "❌ Connection failed. Please try again."
-                            isConnecting = false
-                        }
-                    }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color.White),
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isConnecting
-            ) {
-                if (isConnecting) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = Color(0xFF2563EB)
-                        )
-                        Text(
-                            "Connecting...",
-                            color = Color(0xFF2563EB),
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                } else {
-                    Text(
-                        "Connect Your Bank Account Securely",
-                        color = Color(0xFF2563EB),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+    PlaidLinkButton(
+        onSuccess = { publicToken ->
+            println("Plaid Link successful! Public token: $publicToken")
+            // Here you would typically:
+            // 1. Send the public token to your backend
+            // 2. Exchange it for an access token
+            // 3. Fetch account data
+            // 4. Update the UI to show connected accounts
+        },
+        onError = { error ->
+            println("Plaid Link error: $error")
+            // Handle error - show user-friendly message
         }
-    }
+    )
 }
 
 @Composable
@@ -918,58 +827,57 @@ fun InsightsTabContent(paddingValues: PaddingValues) {
 
 @Composable
 fun CFOTabContent(paddingValues: PaddingValues, onNavigateToChat: () -> Unit = {}) {
-    LazyColumn(
+    Column(
         modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // AI CFO Welcome Card with conversation starter
-        item {
-            AICFOWelcomeCard(onNavigateToChat)
+        // CFO Hero Image
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .background(Color(0xFF10B981), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("💝", fontSize = 60.sp)
         }
         
-        // Coming soon features
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        "What Your Personal CFO Will Do:",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    
-                    val features = listOf(
-                        "🎯 Create personalized financial goals through conversation",
-                        "📊 Analyze your spending patterns from connected accounts",
-                        "💡 Provide proactive financial advice and insights",
-                        "🏆 Help you achieve financial milestones step by step",
-                        "📈 Track your progress and celebrate achievements"
-                    )
-                    
-                    features.forEach { feature ->
-                        Row(
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                feature.take(2),
-                                fontSize = 16.sp
-                            )
-                            Text(
-                                feature.drop(2),
-                                fontSize = 14.sp,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-            }
+        Spacer(modifier = Modifier.height(24.dp))
+        
+        // Title
+        Text(
+            "Your Personal CFO",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
+        )
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        // Description
+        Text(
+            "I'm here to help you with your finances! Let's chat about your goals, spending, or any financial questions you have.",
+            fontSize = 16.sp,
+            textAlign = TextAlign.Center,
+            lineHeight = 24.sp,
+            color = Color.Gray
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        // Start Conversation Button
+        Button(
+            onClick = onNavigateToChat,
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+            modifier = Modifier.fillMaxWidth(0.8f),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text(
+                "Start Conversation with Your CFO",
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
         }
     }
 }

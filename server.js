@@ -116,8 +116,8 @@ app.get('/health', async (req, res) => {
     console.log('Health check: Testing database connection...');
     const result = await pool.query('SELECT NOW() as current_time');
     console.log('Health check: Database query successful');
-    res.json({ 
-      status: 'OK', 
+    res.json({
+      status: 'OK',
       timestamp: new Date().toISOString(),
       database: 'connected',
       db_time: result.rows[0].current_time
@@ -148,31 +148,31 @@ app.get('/api', (req, res) => {
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName } = req.body;
-    
+
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ error: 'All fields are required' });
     }
-    
+
     // Check if user exists
     const existingUser = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existingUser.rows.length > 0) {
       return res.status(409).json({ error: 'User already exists' });
     }
-    
+
     // Hash password
     const passwordHash = await bcrypt.hash(password, 12);
-    
+
     // Create user
     const result = await pool.query(
       'INSERT INTO users (email, password_hash, first_name, last_name) VALUES ($1, $2, $3, $4) RETURNING id, email, first_name, last_name',
       [email, passwordHash, firstName, lastName]
     );
-    
+
     const user = result.rows[0];
-    
+
     // Generate JWT token
     const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '24h' });
-    
+
     res.status(201).json({
       message: 'Registration successful',
       user: {
@@ -183,7 +183,7 @@ app.post('/api/auth/register', async (req, res) => {
       },
       token
     });
-    
+
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed' });
@@ -194,28 +194,28 @@ app.post('/api/auth/register', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
-    
+
     // Get user
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     const user = result.rows[0];
-    
+
     // Verify password
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
-    
+
     // Generate JWT token
     const token = jwt.sign({ userId: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '24h' });
-    
+
     res.json({
       message: 'Login successful',
       user: {
@@ -226,7 +226,7 @@ app.post('/api/auth/login', async (req, res) => {
       },
       token
     });
-    
+
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
@@ -257,7 +257,7 @@ const authenticateToken = (req, res, next) => {
 app.get('/api/financial/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     // Mock financial data - replace with real data from your financial aggregation service
     const summary = {
       netWorth: 124500.50,
@@ -282,7 +282,7 @@ app.get('/api/financial/summary', authenticateToken, async (req, res) => {
         }
       ]
     };
-    
+
     res.json(summary);
   } catch (error) {
     console.error('Financial summary error:', error);
@@ -294,7 +294,7 @@ app.get('/api/financial/summary', authenticateToken, async (req, res) => {
 app.get('/api/goals', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     // Mock goals data - replace with real database queries
     const goals = [
       {
@@ -316,7 +316,7 @@ app.get('/api/goals', authenticateToken, async (req, res) => {
         priority: 'medium'
       }
     ];
-    
+
     res.json(goals);
   } catch (error) {
     console.error('Goals fetch error:', error);
@@ -329,14 +329,14 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
   try {
     const { message, conversationHistory = [], context, onboardingStep } = req.body;
     const userId = req.user.userId;
-    
+
     // Get user info for personalization
     const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
-    const userName = userResult.rows[0]?.first_name || 'there';
-    
+    const userName = (userResult.rows[0] && userResult.rows[0].first_name) || 'there';
+
     // Enhanced AI CFO response with conversation memory
     let aiResponse;
-    
+
     if (onboardingStep && onboardingStep !== 'COMPLETED') {
       // Handle onboarding conversation
       aiResponse = generateOnboardingResponse(message, onboardingStep, context, userName);
@@ -344,7 +344,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
       // Handle regular AI CFO conversation with memory
       aiResponse = generateRegularCFOResponse(message, conversationHistory, context, userId, userName);
     }
-    
+
     res.json(aiResponse);
   } catch (error) {
     console.error('AI CFO chat error:', error);
@@ -357,11 +357,11 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
   try {
     const { amount, description, category } = req.body;
     const userId = req.user.userId;
-    
+
     // Get user info for personalization
     const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
-    const userName = userResult.rows[0]?.first_name || 'there';
-    
+    const userName = (userResult.rows[0] && userResult.rows[0].first_name) || 'there';
+
     // Mock financial analysis - in production, this would use real account data
     const mockBudget = {
       entertainment: { budget: 400, spent: 180, remaining: 220 },
@@ -369,16 +369,16 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
       shopping: { budget: 200, spent: 95, remaining: 105 },
       emergency: { current: 8500, target: 10000 }
     };
-    
+
     const canAfford = amount <= mockBudget.entertainment.remaining + mockBudget.shopping.remaining;
-    
+
     const affordabilityResponse = {
       canAfford: canAfford,
-      encouragingMessage: canAfford 
+      encouragingMessage: canAfford
         ? `Hey ${userName}! 🎉 Great news - you can totally afford this ${description}! You're doing such a good job managing your money.`
         : `Hi ${userName}! 💙 I want to help you make the best decision here. While ${description} sounds nice, it might stretch your budget a bit thin this month.`,
       impactOnGoals: {
-        emergencyFund: canAfford 
+        emergencyFund: canAfford
           ? "Your emergency fund progress won't be affected - you're still on track! 🎯"
           : "This might slow down your emergency fund progress by about a week, but we can adjust! 💪",
         overallImpact: canAfford ? "MINIMAL" : "MODERATE"
@@ -407,7 +407,7 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
         "Should we look at adjusting your budget categories?"
       ]
     };
-    
+
     res.json(affordabilityResponse);
   } catch (error) {
     console.error('AI affordability check error:', error);
@@ -420,11 +420,11 @@ app.post('/api/ai/spending-analysis', authenticateToken, async (req, res) => {
   try {
     const { category, timeframe } = req.body;
     const userId = req.user.userId;
-    
+
     // Get user info for personalization
     const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
-    const userName = userResult.rows[0]?.first_name || 'there';
-    
+    const userName = (userResult.rows[0] && userResult.rows[0].first_name) || 'there';
+
     // Mock spending analysis - in production, this would analyze real transaction data
     const spendingAnalysis = {
       message: `Hey ${userName}! 🕵️‍♀️ I've been analyzing your ${category} spending and I found some really interesting patterns!\n\n📊 Here's what I discovered:\n\nYou spent $127 vs your usual $85/week on groceries, but here's the cool part - that big $67 trip on the 15th included cleaning supplies and toiletries, not just food!\n\nYou're actually being super smart by stocking up on essentials. That's not overspending - that's strategic planning! 👏\n\nMystery solved! 🎉`,
@@ -461,7 +461,7 @@ app.post('/api/ai/spending-analysis', authenticateToken, async (req, res) => {
         }
       ]
     };
-    
+
     res.json(spendingAnalysis);
   } catch (error) {
     console.error('AI spending analysis error:', error);
@@ -474,7 +474,7 @@ app.post('/api/ai/onboarding/start', authenticateToken, async (req, res) => {
   try {
     const { userName } = req.body;
     const userId = req.user.userId;
-    
+
     const welcomeResponse = {
       message: `Hey ${userName}! 👋 I'm so excited to be your personal CFO! Think of me as that supportive friend who's always in your corner, helping you make smart money decisions and cheering you on every step of the way.\n\nI'd love to get to know you better so I can create a personalized financial plan that actually fits YOUR life. No boring forms - just a friendly chat! 😊\n\nWhat brings you here today? Are you looking to save for something special, get better at budgeting, or maybe just want to feel more confident about your finances?`,
       tone: 'WARM_FRIENDLY',
@@ -497,7 +497,7 @@ app.post('/api/ai/onboarding/start', authenticateToken, async (req, res) => {
       encouragementLevel: 'ENCOURAGING',
       onboardingStep: 'WELCOME'
     };
-    
+
     res.json(welcomeResponse);
   } catch (error) {
     console.error('AI CFO onboarding start error:', error);
@@ -508,7 +508,7 @@ app.post('/api/ai/onboarding/start', authenticateToken, async (req, res) => {
 // Helper function to generate onboarding responses
 function generateOnboardingResponse(message, step, context) {
   const lowerMessage = message.toLowerCase();
-  
+
   switch (step) {
     case 'WELCOME':
       return {
@@ -516,14 +516,14 @@ function generateOnboardingResponse(message, step, context) {
         tone: 'ENCOURAGING',
         followUpQuestions: [
           "I want to save for a big purchase",
-          "I need help with monthly budgeting", 
+          "I need help with monthly budgeting",
           "I want to build an emergency fund",
           "I'm worried about my spending habits"
         ],
         onboardingStep: 'GOALS_DISCOVERY',
         emojis: ['💡', '🎯', '✨']
       };
-      
+
     case 'GOALS_DISCOVERY':
       return {
         message: getGoalsDiscoveryResponse(lowerMessage),
@@ -531,13 +531,13 @@ function generateOnboardingResponse(message, step, context) {
         followUpQuestions: [
           "I love dining out and social activities",
           "I'm more of a homebody who likes simple pleasures",
-          "I enjoy travel and experiences", 
+          "I enjoy travel and experiences",
           "I prefer saving over spending on extras"
         ],
         onboardingStep: 'LIFESTYLE_LEARNING',
         emojis: ['🎯', '💫', '🚀']
       };
-      
+
     case 'LIFESTYLE_LEARNING':
       return {
         message: "Perfect! I'm getting such a good picture of who you are and what matters to you! 😊\n\nNow, without getting too personal, could you give me a rough idea of your financial situation? I'm not looking for exact numbers - just want to understand if you're:\n\n• Just starting out and building from scratch 🌱\n• Doing okay but want to optimize and grow 📈\n• Pretty comfortable but looking for next-level strategies 🚀\n\nThis helps me give you advice that actually makes sense for where you're at right now!",
@@ -551,7 +551,7 @@ function generateOnboardingResponse(message, step, context) {
         onboardingStep: 'FINANCIAL_SITUATION',
         emojis: ['💭', '📊', '🎯']
       };
-      
+
     default:
       return generateRegularCFOResponse(message, context);
   }
@@ -583,8 +583,8 @@ function getGoalsDiscoveryResponse(lowerMessage) {
 function generateRegularCFOResponse(message, conversationHistory, context, userId, userName) {
   const lowerMessage = message.toLowerCase();
   const messageCount = conversationHistory.length;
-  const previousMessages = conversationHistory.slice(-3).map(msg => msg.message?.toLowerCase() || '');
-  
+  const previousMessages = conversationHistory.slice(-3).map(msg => msg.message && msg.message.toLowerCase() || '');
+
   // Create varied responses based on conversation history
   const responses = {
     greetings: [
@@ -613,11 +613,11 @@ function generateRegularCFOResponse(message, conversationHistory, context, userI
       `You always ask such thoughtful questions! 🤔 How can I support your financial success today?`
     ]
   };
-  
+
   // Determine response category and avoid repetition
   let responseCategory = 'general';
   let responseArray = responses.general;
-  
+
   if (lowerMessage.includes('goal')) {
     responseCategory = 'goals';
     responseArray = responses.goals;
@@ -631,14 +631,14 @@ function generateRegularCFOResponse(message, conversationHistory, context, userI
     responseCategory = 'greetings';
     responseArray = responses.greetings;
   }
-  
+
   // Select response based on message count to avoid repetition
   const responseIndex = messageCount % responseArray.length;
   const selectedMessage = responseArray[responseIndex];
-  
+
   // Add contextual follow-up questions based on conversation history
   let followUpQuestions = [];
-  
+
   if (responseCategory === 'goals') {
     followUpQuestions = [
       'How close am I to my emergency fund goal?',
@@ -668,7 +668,7 @@ function generateRegularCFOResponse(message, conversationHistory, context, userI
       'Give me some financial motivation'
     ];
   }
-  
+
   return {
     message: selectedMessage,
     tone: 'WARM_FRIENDLY',
@@ -693,11 +693,11 @@ function generateRegularCFOResponse(message, conversationHistory, context, userI
 
 // Plaid Integration Endpoints
 
-// Create Plaid Link Token
-app.post('/api/plaid/create-link-token', authenticateToken, async (req, res) => {
+// Create Plaid Link Token (temporarily allowing unauthenticated access for testing)
+app.post('/api/plaid/create-link-token', async (req, res) => {
   try {
-    const userId = req.user.userId;
-    
+    const userId = 'test-user-123'; // Use a test user ID for now
+
     // Create link token request
     const linkTokenRequest = {
       user: {
@@ -708,10 +708,10 @@ app.post('/api/plaid/create-link-token', authenticateToken, async (req, res) => 
       country_codes: ['US', 'CA'],
       language: 'en'
     };
-    
+
     const response = await plaidClient.linkTokenCreate(linkTokenRequest);
     const linkToken = response.data.link_token;
-    
+
     res.json({
       link_token: linkToken,
       expiration: response.data.expiration
@@ -727,25 +727,25 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
   try {
     const { public_token } = req.body;
     const userId = req.user.userId;
-    
+
     if (!public_token) {
       return res.status(400).json({ error: 'Public token is required' });
     }
-    
+
     // Exchange public token for access token
     const exchangeRequest = {
       public_token: public_token,
     };
-    
+
     const exchangeResponse = await plaidClient.linkTokenExchange(exchangeRequest);
     const accessToken = exchangeResponse.data.access_token;
     const itemId = exchangeResponse.data.item_id;
-    
+
     // Get account information
     const accountsRequest = {
       access_token: accessToken,
     };
-    
+
     const accountsResponse = await plaidClient.accountsGet(accountsRequest);
     const accounts = accountsResponse.data.accounts.map(account => ({
       id: account.account_id,
@@ -757,9 +757,9 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
       lastSyncTime: Date.now(),
       connectionStatus: 'HEALTHY'
     }));
-    
+
     // TODO: Store access token and account info in database for this user
-    
+
     res.json({
       success: true,
       accounts: accounts,
@@ -776,7 +776,7 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
 app.get('/api/plaid/accounts', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     // Mock connected accounts data
     const accounts = [
       {
@@ -800,7 +800,7 @@ app.get('/api/plaid/accounts', authenticateToken, async (req, res) => {
         connectionStatus: 'HEALTHY'
       }
     ];
-    
+
     res.json({ accounts });
   } catch (error) {
     console.error('Get accounts error:', error);
@@ -813,11 +813,11 @@ app.post('/api/plaid/sync-transactions', authenticateToken, async (req, res) => 
   try {
     const { accountId } = req.body;
     const userId = req.user.userId;
-    
+
     if (!accountId) {
       return res.status(400).json({ error: 'Account ID is required' });
     }
-    
+
     // Mock transaction data
     const transactions = [
       {
@@ -848,7 +848,7 @@ app.post('/api/plaid/sync-transactions', authenticateToken, async (req, res) => 
         merchantName: 'Shell'
       }
     ];
-    
+
     res.json({
       success: true,
       transactions: transactions
@@ -863,11 +863,11 @@ app.post('/api/plaid/sync-transactions', authenticateToken, async (req, res) => 
 app.post('/api/plaid/disconnect-account', authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.body;
-    
+
     if (!accountId) {
       return res.status(400).json({ error: 'Account ID is required' });
     }
-    
+
     // In production, you'd remove the account from Plaid and your database
     res.json({
       success: true,
@@ -884,7 +884,7 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { limit = 50, offset = 0 } = req.query;
-    
+
     // Mock transaction data - replace with real data
     const transactions = [
       {
@@ -906,7 +906,7 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
         isRecurring: false
       }
     ];
-    
+
     res.json({
       transactions: transactions.slice(offset, offset + limit),
       total: transactions.length,

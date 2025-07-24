@@ -14,7 +14,7 @@ kotlin {
     androidTarget {
         compilations.all {
             kotlinOptions {
-                jvmTarget = "1.8"
+                jvmTarget = "11"
             }
         }
     }
@@ -39,7 +39,10 @@ kotlin {
                 implementation("androidx.navigation:navigation-compose:2.7.6")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
                 implementation("androidx.compose.material:material-icons-extended:1.5.4")
-                implementation("com.plaid.link:sdk-core:3.10.1") // Plaid Android SDK
+                implementation("com.plaid.link:sdk-core:4.1.0") // Plaid Android SDK - Latest version
+                
+                // Ktor client engine for Android
+                implementation("io.ktor:ktor-client-android:2.3.4")
             }
         }
         val commonMain by getting {
@@ -51,6 +54,11 @@ kotlin {
                 @OptIn(ExperimentalComposeLibrary::class)
                 implementation(compose.components.resources)
                 implementation(project(":shared"))
+                
+                // Ktor client for HTTP requests
+                implementation("io.ktor:ktor-client-core:2.3.4")
+                implementation("io.ktor:ktor-client-content-negotiation:2.3.4")
+                implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.4")
             }
         }
     }
@@ -82,8 +90,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
     }
     dependencies {
         debugImplementation("androidx.compose.ui:ui-tooling:1.5.4")

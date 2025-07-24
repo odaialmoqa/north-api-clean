@@ -28,6 +28,7 @@ import com.north.mobile.ui.dashboard.DashboardScreen
 import com.north.mobile.ui.accounts.AccountConnectionScreen
 import com.north.mobile.ui.accounts.AccountDetailsScreen
 import com.north.mobile.ui.accounts.AccountConnectionViewModel
+import com.north.mobile.ui.onboarding.OnboardingScreen
 import com.north.mobile.data.auth.SessionManagerImpl
 import com.north.mobile.data.plaid.PlaidIntegrationServiceImpl
 import com.north.mobile.data.api.ApiClient
@@ -79,6 +80,7 @@ fun NorthApp(onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)? = null) {
     // Session-aware authentication state
     var isAuthenticated by remember { mutableStateOf(false) }
     var isCheckingSession by remember { mutableStateOf(true) }
+    var hasCompletedOnboarding by remember { mutableStateOf(false) }
     
     // Handle session checking
     LaunchedEffect(Unit) {
@@ -94,9 +96,13 @@ fun NorthApp(onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)? = null) {
             val authenticated = authRepository.isUserAuthenticated()
             isAuthenticated = authenticated
             
+            // For now, assume onboarding is not completed for new users
+            // In a real app, you'd check this from SharedPreferences or similar
+            hasCompletedOnboarding = authenticated // If authenticated, they've seen onboarding
+            
             if (authenticated) {
                 navController.navigate("dashboard") {
-                    popUpTo("auth") { inclusive = true }
+                    popUpTo("onboarding") { inclusive = true }
                 }
             }
         } catch (e: Exception) {
