@@ -59,6 +59,7 @@ class AccountConnectionViewModel(
     }
     
     fun exchangePublicToken(publicToken: String) {
+        println("🔄 ViewModel.exchangePublicToken called with: $publicToken")
         _uiState = _uiState.copy(
             isConnecting = true,
             connectionStep = ConnectionStep.EXCHANGING_TOKEN
@@ -66,10 +67,13 @@ class AccountConnectionViewModel(
         
         coroutineScope.launch {
             try {
+                println("📡 Calling plaidService.exchangePublicToken...")
                 val connectionResult = plaidService.exchangePublicToken(publicToken)
+                println("📡 Exchange result: success=${connectionResult.success}, accounts=${connectionResult.accounts.size}, error=${connectionResult.error}")
                 
                 if (connectionResult.success) {
                     // Successfully connected accounts
+                    println("✅ Token exchange successful! Found ${connectionResult.accounts.size} accounts")
                     _uiState = _uiState.copy(
                         isConnecting = false,
                         connectionStep = ConnectionStep.COMPLETED,
@@ -82,6 +86,7 @@ class AccountConnectionViewModel(
                     loadConnectedAccounts()
                 } else {
                     // Failed to exchange token
+                    println("❌ Token exchange failed: ${connectionResult.error}")
                     _uiState = _uiState.copy(
                         isConnecting = false,
                         connectionStep = ConnectionStep.ERROR,
@@ -91,6 +96,8 @@ class AccountConnectionViewModel(
                 }
             } catch (e: Exception) {
                 // Handle any exceptions
+                println("❌ Exception during token exchange: ${e.message}")
+                e.printStackTrace()
                 _uiState = _uiState.copy(
                     isConnecting = false,
                     connectionStep = ConnectionStep.ERROR,

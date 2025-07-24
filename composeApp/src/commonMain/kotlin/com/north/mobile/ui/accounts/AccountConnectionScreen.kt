@@ -48,9 +48,13 @@ fun AccountConnectionScreen(
     val handlePlaidLinkResult = remember {
         { linkToken: String, onResult: (String?) -> Unit ->
             onLaunchPlaidLink?.invoke(linkToken) { publicToken ->
+                println("🔄 Received public token in callback: $publicToken")
                 if (publicToken != null) {
                     // Exchange the public token via the ViewModel
+                    println("✅ Calling viewModel.exchangePublicToken with: $publicToken")
                     viewModel.exchangePublicToken(publicToken)
+                } else {
+                    println("❌ Public token is null - Plaid Link was cancelled or failed")
                 }
                 onResult(publicToken)
             }
