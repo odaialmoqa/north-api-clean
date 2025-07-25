@@ -370,8 +370,16 @@ suspend fun callAICFOApi(message: String, authRepository: AuthRepository): Strin
         )
         
         // Get auth token from the shared auth repository
+        println("🔍 Checking authentication state...")
+        val isAuthenticated = authRepository.isUserAuthenticated()
+        println("🔐 User authenticated: $isAuthenticated")
+        
         val token = authRepository.getCurrentToken()
-        println("🔑 Auth token retrieved: ${if (token != null) "✅ Success (${token.take(20)}...)" else "❌ Failed"}")
+        println("🔑 Auth token retrieved: ${if (token != null) "✅ Success (${token.take(20)}...)" else "❌ Failed - token is null"}")
+        
+        // Additional debugging
+        val currentUser = authRepository.currentUser.value
+        println("👤 Current user: ${if (currentUser != null) "✅ Found user: ${currentUser.email}" else "❌ No user found"}")
         
         if (token == null) {
             throw Exception("No auth token available - user may not be logged in")
