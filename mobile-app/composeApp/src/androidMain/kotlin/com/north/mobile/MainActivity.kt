@@ -84,26 +84,29 @@ class MainActivity : ComponentActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
-        if (!Plaid.isBoundToActivity(this)) {
-            return
+        // Handle Plaid Link result
+        plaidHandler?.let { handler ->
+            val linkResult = handler.onActivityResult(requestCode, resultCode, data)
+            when (linkResult) {
+                is LinkResult.Success -> {
+                    println("✅ Plaid Link Success: ${linkResult.publicToken}")
+                    plaidResultCallback?.invoke(linkResult.publicToken)
+                }
+                is LinkResult.Cancelled -> {
+                    println("⚠️ Plaid Link Cancelled")
+                    plaidResultCallback?.invoke(null)
+                }
+                is LinkResult.Failure -> {
+                    println("❌ Plaid Link Failed: ${linkResult.error}")
+                    plaidResultCallback?.invoke(null)
+                }
+                else -> {
+                    println("⚠️ Unknown Plaid Link result")
+                    plaidResultCallback?.invoke(null)
+                }
+            }
+            plaidResultCallback = null
         }
-        
-        val linkResult = Plaid.handleOnActivityResult(requestCode, resultCode, data)
-        when (linkResult) {
-            is LinkResult.Success -> {
-                println("✅ Plaid Link Success: ${linkResult.publicToken}")
-                plaidResultCallback?.invoke(linkResult.publicToken)
-            }
-            is LinkResult.Cancelled -> {
-                println("⚠️ Plaid Link Cancelled")
-                plaidResultCallback?.invoke(null)
-            }
-            is LinkResult.Failure -> {
-                println("❌ Plaid Link Failed: ${linkResult.error}")
-                plaidResultCallback?.invoke(null)
-            }
-        }
-        plaidResultCallback = null
     }
 }
 

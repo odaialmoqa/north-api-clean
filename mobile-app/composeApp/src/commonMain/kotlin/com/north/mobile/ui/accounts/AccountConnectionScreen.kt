@@ -45,7 +45,7 @@ fun AccountConnectionScreen(
     }
     
     // Create a callback to handle public token exchange
-    val handlePlaidLinkResult = remember {
+    val handlePlaidLinkResult: (String, (String?) -> Unit) -> Unit = remember {
         { linkToken: String, onResult: (String?) -> Unit ->
             onLaunchPlaidLink?.invoke(linkToken) { publicToken ->
                 println("🔄 Received public token in callback: $publicToken")
@@ -84,7 +84,7 @@ fun AccountConnectionScreen(
             when (uiState.connectionStep) {
                 ConnectionStep.NOT_STARTED -> {
                     ConnectionStartScreen(
-                        onStartConnection = { /* No longer needed */ },
+                        onStartConnection = { -> },
                         onLaunchPlaidLink = handlePlaidLinkResult
                     )
                 }
