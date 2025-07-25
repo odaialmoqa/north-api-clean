@@ -137,8 +137,27 @@ app.get('/debug', (req, res) => {
     database_url_preview: process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 30) + '...' : 'NOT SET',
     jwt_secret_exists: !!process.env.JWT_SECRET,
     gemini_api_key_exists: !!process.env.GEMINI_API_KEY,
-    gemini_api_key_preview: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 20) + '...' : 'NOT SET'
+    gemini_api_key_preview: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 20) + '...' : 'NOT SET',
+    genai_initialized: !!genAI
   });
+});
+
+// Simple Gemini test endpoint
+app.get('/test-gemini', async (req, res) => {
+  try {
+    if (!genAI) {
+      return res.json({ error: 'Gemini not initialized', api_key_exists: !!process.env.GEMINI_API_KEY });
+    }
+    
+    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const result = await model.generateContent('Say hello in a friendly way');
+    const response = await result.response;
+    const text = response.text();
+    
+    res.json({ success: true, response: text });
+  } catch (error) {
+    res.json({ error: error.message, stack: error.stack });
+  }
 });
 
 // Health check endpoint
