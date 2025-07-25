@@ -333,15 +333,20 @@ fun sendMessage(
     // Make real API call to backend AI CFO Brain
     kotlinx.coroutines.GlobalScope.launch {
         try {
+            println("🚀 Starting AI CFO API call for message: '$userMessage'")
+            
             // Call the real Gemini-powered AI CFO endpoint
             val aiResponse = callAICFOApi(userMessage)
             val finalMessages = updatedMessages + ChatMessage(aiResponse, false)
             
+            println("✅ AI CFO response received successfully")
             onMessagesUpdate(finalMessages)
             onLoadingUpdate(false)
         } catch (e: Exception) {
-            // Fallback error message
-            val errorMessage = "I'm having trouble connecting right now. Please try again in a moment! 😊"
+            println("❌ AI CFO API call failed: ${e.message}")
+            
+            // Show the actual error for debugging
+            val errorMessage = "Debug: API call failed - ${e.message}"
             val finalMessages = updatedMessages + ChatMessage(errorMessage, false)
             
             onMessagesUpdate(finalMessages)
@@ -353,23 +358,36 @@ fun sendMessage(
 // Call the real AI CFO API
 suspend fun callAICFOApi(message: String): String {
     return try {
+        println("🤖 Calling AI CFO API with message: $message")
+        
         // Use the existing FinancialApiService to call the AI CFO
         val apiService = com.north.mobile.data.api.FinancialApiService(
             com.north.mobile.data.api.ApiClient()
         )
         
-        // Get auth token (you'll need to implement token retrieval)
-        val token = getAuthToken() ?: throw Exception("No auth token available")
+        // Get auth token
+        val token = getAuthToken()
+        println("🔑 Auth token retrieved: ${if (token != null) "✅ Success" else "❌ Failed"}")
+        
+        if (token == null) {
+            throw Exception("No auth token available - user may not be logged in")
+        }
         
         // Call the AI CFO endpoint
+        println("📡 Making API call to sendChatMessage...")
         val result = apiService.sendChatMessage(token, message)
         
         if (result.isSuccess) {
-            result.getOrThrow().response
+            val response = result.getOrThrow().response
+            println("✅ AI CFO API success: ${response.take(100)}...")
+            response
         } else {
-            throw result.exceptionOrNull() ?: Exception("Unknown error")
+            val error = result.exceptionOrNull()
+            println("❌ AI CFO API failed: ${error?.message}")
+            throw error ?: Exception("Unknown API error")
         }
     } catch (e: Exception) {
+        println("💥 callAICFOApi exception: ${e.message}")
         throw Exception("Failed to get AI response: ${e.message}")
     }
 }
@@ -377,17 +395,22 @@ suspend fun callAICFOApi(message: String): String {
 // Get authentication token from the auth repository
 suspend fun getAuthToken(): String? {
     return try {
+        println("🔐 Getting auth token...")
         val apiClient = ApiClient()
         val authApiService = AuthApiService(apiClient)
         val authRepository = AuthRepository(authApiService)
         
         // Initialize session to load stored token
+        println("📱 Initializing session...")
         authRepository.initializeSession()
         
         // Get current token
-        authRepository.getCurrentToken()
+        val token = authRepository.getCurrentToken()
+        println("🎫 Token result: ${if (token != null) "Found token (${token.take(20)}...)" else "No token found"}")
+        
+        token
     } catch (e: Exception) {
-        println("Error getting auth token: ${e.message}")
+        println("❌ Error getting auth token: ${e.message}")
         null
     }
 }
