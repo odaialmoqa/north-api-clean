@@ -135,7 +135,9 @@ app.get('/debug', (req, res) => {
     node_env: process.env.NODE_ENV || 'not set',
     database_url_exists: !!process.env.DATABASE_URL,
     database_url_preview: process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 30) + '...' : 'NOT SET',
-    jwt_secret_exists: !!process.env.JWT_SECRET
+    jwt_secret_exists: !!process.env.JWT_SECRET,
+    gemini_api_key_exists: !!process.env.GEMINI_API_KEY,
+    gemini_api_key_preview: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 20) + '...' : 'NOT SET'
   });
 });
 
