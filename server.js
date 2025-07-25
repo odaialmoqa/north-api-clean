@@ -737,11 +737,11 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
       public_token: public_token,
     };
 
-    const exchangeResponse = await plaidClient.linkTokenExchange(exchangeRequest);
+    const exchangeResponse = await plaidClient.itemPublicTokenExchange(exchangeRequest);
     const accessToken = exchangeResponse.data.access_token;
     const itemId = exchangeResponse.data.item_id;
 
-    // Get account informationt plaidClient.linkTokenExchange(exchangeRequest);
+    // Get account information
     const accountsRequest = {
       access_token: accessToken,
     };
