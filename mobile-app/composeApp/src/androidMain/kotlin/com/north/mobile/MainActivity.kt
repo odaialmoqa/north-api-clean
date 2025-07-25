@@ -40,29 +40,15 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.plaid.link.Plaid
 import com.plaid.link.PlaidHandler
 import com.plaid.link.configuration.LinkTokenConfiguration
-import com.plaid.link.result.LinkResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    private var plaidHandler: PlaidHandler? = null
     private var plaidResultCallback: ((String?) -> Unit)? = null
-    
-    // Activity Result Launcher for Plaid Link
-    private lateinit var plaidLauncher: ActivityResultLauncher<Intent>
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Handle OAuth redirect from Plaid
-        handlePlaidRedirect(intent)
-        
-        // Initialize Plaid Link launcher (backup method)
-        plaidLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            println("📱 Activity result received: resultCode=${result.resultCode}")
-            handlePlaidResult(result.resultCode, result.data)
-        }
         
         setContent {
             NorthAppTheme {
@@ -81,162 +67,45 @@ class MainActivity : ComponentActivity() {
     }
     
     private fun launchPlaidLink(linkToken: String, onResult: (String?) -> Unit) {
+        println("🚀 RECEIVED LINK TOKEN: $linkToken")
+        plaidResultCallback = onResult
+        
         try {
-            println("🚀 Starting Plaid Link with token: ${linkToken.take(20)}...")
-            plaidResultCallback = onResult
-            
             val config = LinkTokenConfiguration.Builder()
                 .token(linkToken)
                 .build()
+                
+            val plaidHandler = Plaid.create(application, config)
+            val success = plaidHandler.open(this)
             
-            println("📋 Plaid configuration created")
-            
-            plaidHandler = Plaid.create(application, config)
-            println("🔧 Plaid handler created: ${plaidHandler != null}")
-            
-            // Try multiple approaches to launch Plaid Link
-            try {
-                // Method 1: Direct open (most common)
-                plaidHandler?.open(this)
-                println("🎯 Plaid Link open() called - UI should appear now")
-            } catch (e1: Exception) {
-                println("⚠️ Direct open failed: ${e1.message}")
-                try {
-                    // Method 2: Create intent and launch manually
-                    val intent = Intent(this, Class.forName("com.plaid.link.LinkActivity"))
-                    intent.putExtra("LINK_CONFIGURATION", config)
-                    startActivity(intent)
-                    println("🎯 Manual intent launch attempted")
-                } catch (e2: Exception) {
-                    println("❌ Manual intent launch failed: ${e2.message}")
-                    throw e2
-                }
+            if (!success) {
+                println("❌ Plaid.open() returned false - failed to launch")
+                onResult(null)
+            } else {
+                println("✅ Plaid.open() returned true - should be launching now")
             }
-            
-            // Set a timeout in case Plaid doesn't respond
-            CoroutineScope(Dispatchers.Main).launch {
-                kotlinx.coroutines.delay(30000) // 30 second timeout
-                if (plaidResultCallback != null) {
-                    println("⏰ Plaid Link timeout - no response after 30 seconds")
-                    plaidResultCallback?.invoke(null)
-                    plaidResultCallback = null
-                }
-            }
-            
         } catch (e: Exception) {
-            println("❌ Failed to launch Plaid Link: ${e.message}")
+            println("❌ Exception launching Plaid: ${e.message}")
             e.printStackTrace()
             onResult(null)
         }
     }
     
-    private fun handlePlaidResult(resultCode: Int, data: Intent?) {
-        try {
-            println("🔍 Handling Plaid result: resultCode=$resultCode")
-            println("🔍 Intent data: ${data?.extras?.keySet()?.joinToString()}")
-            
-            // Log all available extras for debugging
-            data?.extras?.let { extras ->
-                for (key in extras.keySet()) {
-                    println("🔍 Extra: $key = ${extras.get(key)}")
-                }
-            }
-            
-            // Fallback: Parse the result manually
-            when (resultCode) {
-                RESULT_OK -> {
-                    // Try to extract public token from intent data
-                    val publicToken = data?.getStringExtra("public_token") 
-                        ?: data?.getStringExtra("publicToken")
-                        ?: data?.getStringExtra("PUBLIC_TOKEN")
-                        ?: data?.extras?.getString("public_token")
-                        ?: data?.extras?.getString("publicToken")
-                        ?: data?.extras?.getString("PUBLIC_TOKEN")
-                    
-                    if (publicToken != null) {
-                        println("✅ Plaid Link Success: $publicToken")
-                        plaidResultCallback?.invoke(publicToken)
-                    } else {
-                        println("⚠️ Success result but no public token found")
-                        println("🔍 Available extras: ${data?.extras?.keySet()?.joinToString()}")
-                        // For testing, generate a mock token
-                        val mockToken = "public-sandbox-${System.currentTimeMillis()}"
-                        println("🧪 Using mock token: $mockToken")
-                        plaidResultCallback?.invoke(mockToken)
-                    }
-                }
-                RESULT_CANCELED -> {
-                    println("⚠️ Plaid Link Cancelled")
-                    plaidResultCallback?.invoke(null)
-                }
-                else -> {
-                    println("❌ Plaid Link Failed with result code: $resultCode")
-                    plaidResultCallback?.invoke(null)
-                }
-            }
-        } catch (e: Exception) {
-            println("❌ Error handling Plaid result: ${e.message}")
-            e.printStackTrace()
-            plaidResultCallback?.invoke(null)
-        } finally {
-            plaidResultCallback = null
-        }
-    }
+
     
-    // Handle new intents (for OAuth redirects)
-    override fun onNewIntent(intent: Intent?) {
-        super.onNewIntent(intent)
-        println("📱 onNewIntent called")
-        handlePlaidRedirect(intent)
-    }
+
     
-    // Handle Plaid OAuth redirects
-    private fun handlePlaidRedirect(intent: Intent?) {
-        intent?.let { 
-            val data = it.data
-            println("🔗 Intent data: $data")
-            
-            if (data != null) {
-                val scheme = data.scheme
-                val host = data.host
-                val path = data.path
-                
-                println("🔗 Redirect received: scheme=$scheme, host=$host, path=$path")
-                
-                // Check if this is a Plaid redirect
-                if ((scheme == "https" && host == "north-mobile.app" && path?.startsWith("/plaid") == true) ||
-                    (scheme == "northmobile")) {
-                    
-                    // Extract any parameters from the redirect
-                    val publicToken = data.getQueryParameter("public_token")
-                    val error = data.getQueryParameter("error")
-                    
-                    println("🔗 Plaid redirect: publicToken=$publicToken, error=$error")
-                    
-                    if (publicToken != null) {
-                        println("✅ OAuth redirect success: $publicToken")
-                        plaidResultCallback?.invoke(publicToken)
-                        plaidResultCallback = null
-                    } else if (error != null) {
-                        println("❌ OAuth redirect error: $error")
-                        plaidResultCallback?.invoke(null)
-                        plaidResultCallback = null
-                    }
-                }
-            }
-        }
-    }
-    
-    // Handle Plaid Link results using the traditional onActivityResult method
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         
-        println("📱 onActivityResult called: requestCode=$requestCode, resultCode=$resultCode")
-        
-        // Handle Plaid Link result
-        if (plaidResultCallback != null) {
-            handlePlaidResult(resultCode, data)
+        // Simple result handling - if we get RESULT_OK, extract the public token
+        if (resultCode == RESULT_OK && data != null) {
+            val publicToken = data.getStringExtra("public_token")
+            plaidResultCallback?.invoke(publicToken)
+        } else {
+            plaidResultCallback?.invoke(null)
         }
+        plaidResultCallback = null
     }
     
 

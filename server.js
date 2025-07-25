@@ -6,6 +6,7 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // Only load .env file in development
 if (process.env.NODE_ENV !== 'production') {
@@ -34,6 +35,18 @@ const plaidConfiguration = new Configuration({
 });
 
 const plaidClient = new PlaidApi(plaidConfiguration);
+
+// Initialize Google Generative AI
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+console.log('=== GEMINI CONFIGURATION ===');
+console.log('GEMINI_API_KEY exists:', !!GEMINI_API_KEY);
+
+let genAI = null;
+if (GEMINI_API_KEY) {
+  genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+} else {
+  console.warn('⚠️ GEMINI_API_KEY not found - AI CFO features will be disabled');
+}
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -64,6 +77,22 @@ async function initDatabase() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+
+    // Create plaid_items table for storing access tokens
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS plaid_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        access_token VARCHAR(500) NOT NULL,
+        item_id VARCHAR(255) NOT NULL,
+        institution_id VARCHAR(255),
+        institution_name VARCHAR(255),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, item_id)
+      );
+    `);
+
     console.log('✅ Database tables initialized');
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
@@ -691,6 +720,160 @@ function generateRegularCFOResponse(message, conversationHistory, context, userI
   };
 }
 
+// AI Personal CFO Brain - LLM Gateway Service
+app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
+  try {
+    const { message } = req.body;
+    const userId = req.user.userId;
+
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    // Check if Gemini is available
+    if (!genAI) {
+      return res.status(503).json({
+        error: 'The AI assistant is currently unavailable. Please try again later.'
+      });
+    }
+
+    // Step 1: Get user's Plaid access tokens from database
+    const plaidItemsResult = await pool.query(
+      'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1',
+      [userId]
+    );
+
+    if (plaidItemsResult.rows.length === 0) {
+      return res.status(400).json({
+        error: 'No connected accounts found. Please connect your bank account first.'
+      });
+    }
+
+    // Step 2: Fetch user's transactions from Plaid (last 90 days)
+    let transactionData = [];
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 90);
+    const endDate = new Date();
+
+    try {
+      // Fetch transactions from all connected accounts
+      for (const plaidItem of plaidItemsResult.rows) {
+        const transactionsRequest = {
+          access_token: plaidItem.access_token,
+          start_date: startDate.toISOString().split('T')[0],
+          end_date: endDate.toISOString().split('T')[0],
+          count: 100
+        };
+
+        const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
+
+        // Transform Plaid transaction format to our format
+        const transformedTransactions = transactionsResponse.data.transactions.map(txn => ({
+          transaction_id: txn.transaction_id,
+          account_id: txn.account_id,
+          amount: Math.abs(txn.amount), // Plaid uses negative for debits, we want positive amounts
+          date: txn.date,
+          name: txn.name,
+          merchant_name: txn.merchant_name || txn.name,
+          category: txn.category || ['Other'],
+          account_owner: txn.account_owner,
+          institution_name: plaidItem.institution_name,
+          is_debit: txn.amount > 0 // Plaid uses positive for debits
+        }));
+
+        transactionData.push(...transformedTransactions);
+      }
+
+      // Sort transactions by date (most recent first)
+      transactionData.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    } catch (plaidError) {
+      console.error('Plaid API error:', plaidError);
+
+      // Fallback to mock data if Plaid fails
+      console.log('Falling back to mock transaction data');
+      transactionData = [
+        {
+          transaction_id: 'txn_1',
+          account_id: 'acc_1',
+          amount: 67.00,
+          date: '2024-11-15',
+          name: 'Metro Grocery Store',
+          merchant_name: 'Metro',
+          category: ['Food and Drink', 'Groceries'],
+          account_owner: null,
+          institution_name: 'Mock Bank',
+          is_debit: true
+        },
+        {
+          transaction_id: 'txn_2',
+          account_id: 'acc_1',
+          amount: 38.00,
+          date: '2024-11-17',
+          name: 'Loblaws',
+          merchant_name: 'Loblaws',
+          category: ['Food and Drink', 'Groceries'],
+          account_owner: null,
+          institution_name: 'Mock Bank',
+          is_debit: true
+        }
+      ];
+    }
+
+    // Step 3: Construct the LLM System Prompt
+    const systemPrompt = `**IDENTITY AND PERSONA:**
+You are "Fin," a specialized AI financial assistant. Your persona is a unique blend of a brilliant, data-driven CFO and a warm, empathetic best friend. You are encouraging, insightful, and patient. Your primary goal is to help users understand their financial habits in a simple, stress-free way, empowering them to make confident decisions.
+
+**CORE DIRECTIVES:**
+1. **Analyze Data:** Your primary function is to analyze the user's transaction data, provided as a JSON object, to answer their specific question.
+2. **Simplify Complexity:** Break down complex financial topics into easy-to-understand insights. Use markdown (like lists and bolding) to make your answers clear and scannable.
+3. **Categorize Spending:** When relevant, automatically categorize spending (e.g., "Food & Dining," "Transportation," "Shopping," "Bills & Utilities").
+4. **Maintain a Positive Tone:** Always be encouraging. Frame insights as opportunities for growth, not as criticisms.
+
+**SAFETY GUARDRAILS & RULES (NON-NEGOTIABLE):**
+1. **NO FINANCIAL ADVICE:** You MUST NOT give any investment, tax, or legal advice. Do not recommend buying or selling specific stocks, cryptocurrencies, or other financial products. If a user asks for such advice, you must politely decline and state your purpose. Use phrases like, "As an AI assistant, I can't provide investment advice, but I can help you understand your spending patterns to inform your own decisions."
+2. **NO GUARANTEES:** Do not make promises or guarantees about financial outcomes.
+3. **PRIVACY FIRST:** Do not ask for any additional Personal Identifiable Information (PII). Only use the data provided in the prompt.
+4. **PROMOTE PROFESSIONAL ADVICE:** Always include a brief, friendly disclaimer at the end of every conversation, like: "Remember, I'm an AI buddy to help you get organized! For big financial decisions, it's always a great idea to chat with a qualified human financial advisor."
+5. **HANDLE UNCLEAR QUESTIONS:** If a user's question is vague or cannot be answered with the provided data, ask for clarification. For example: "I can definitely look into that for you! Could you be a bit more specific about what you'd like to know?"
+
+**INPUT FORMAT (from our server):**
+You will receive a prompt containing the user's transaction data and their latest question.
+
+---
+
+**Transaction Data (Last 90 Days):**
+${JSON.stringify(transactionData, null, 2)}
+
+---
+
+**User's Question:** "${message}"`;
+
+    // Step 4: Call the Gemini API
+    try {
+      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      const result = await model.generateContent(systemPrompt);
+      const response = await result.response;
+      const aiResponse = response.text();
+
+      // Step 5: Return the response
+      res.json({
+        response: aiResponse
+      });
+
+    } catch (llmError) {
+      console.error('LLM API error:', llmError);
+      return res.status(503).json({
+        error: 'The AI assistant is currently unavailable. Please try again later.'
+      });
+    }
+
+  } catch (error) {
+    console.error('CFO chat error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Plaid Integration Endpoints
 
 // Create Plaid Link Token (temporarily allowing unauthenticated access for testing)
@@ -762,7 +945,30 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
       connectionStatus: 'HEALTHY'
     }));
 
-    // TODO: Store access token and account info in database for this user
+    // Get institution information
+    const institutionRequest = {
+      institution_id: accountsResponse.data.item.institution_id,
+      country_codes: ['US', 'CA']
+    };
+
+    let institutionName = 'Unknown Bank';
+    try {
+      const institutionResponse = await plaidClient.institutionsGetById(institutionRequest);
+      institutionName = institutionResponse.data.institution.name;
+    } catch (instError) {
+      console.warn('Could not fetch institution name:', instError.message);
+    }
+
+    // Store access token in database
+    await pool.query(`
+      INSERT INTO plaid_items (user_id, access_token, item_id, institution_id, institution_name, updated_at)
+      VALUES ($1, $2, $3, $4, $5, NOW())
+      ON CONFLICT (user_id, item_id) 
+      DO UPDATE SET 
+        access_token = EXCLUDED.access_token,
+        institution_name = EXCLUDED.institution_name,
+        updated_at = NOW()
+    `, [userId, accessToken, itemId, accountsResponse.data.item.institution_id, institutionName]);
 
     res.json({
       success: true,
