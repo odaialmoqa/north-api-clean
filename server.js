@@ -375,27 +375,42 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
       });
     }
 
-    // Get user's Plaid access tokens from database
+    // Get user's Plaid access tokens from database (optional for general questions)
     const plaidItemsResult = await pool.query(
       'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1',
       [userId]
     );
 
-    if (plaidItemsResult.rows.length === 0) {
+    const hasConnectedAccounts = plaidItemsResult.rows.length > 0;
+    
+    // Check if this is a question that requires transaction data
+    const lowerMessage = message.toLowerCase();
+    const requiresTransactionData = lowerMessage.includes('spent') || 
+                                   lowerMessage.includes('spending') || 
+                                   lowerMessage.includes('my money') ||
+                                   lowerMessage.includes('my transactions') ||
+                                   lowerMessage.includes('last month') ||
+                                   lowerMessage.includes('this month') ||
+                                   lowerMessage.includes('my budget');
+
+    // Only require connected accounts for transaction-specific questions
+    if (requiresTransactionData && !hasConnectedAccounts) {
       return res.status(400).json({
-        error: 'No connected accounts found. Please connect your bank account first.'
+        error: 'To analyze your spending patterns, please connect your bank account first. For general financial advice, I\'m happy to help without account access!'
       });
     }
 
-    // Fetch user's transactions from Plaid (last 90 days)
+    // Fetch user's transactions from Plaid (last 90 days) - only if accounts are connected
     let transactionData = [];
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 90);
-    const endDate = new Date();
+    
+    if (hasConnectedAccounts) {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 90);
+      const endDate = new Date();
 
-    try {
-      // Fetch transactions from all connected accounts
-      for (const plaidItem of plaidItemsResult.rows) {
+      try {
+        // Fetch transactions from all connected accounts
+        for (const plaidItem of plaidItemsResult.rows) {
         const transactionsRequest = {
           access_token: plaidItem.access_token,
           start_date: startDate.toISOString().split('T')[0],
@@ -443,6 +458,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
           is_debit: true
         }
       ];
+      }
     }
 
     // Construct the LLM System Prompt
@@ -894,27 +910,42 @@ app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
       });
     }
 
-    // Step 1: Get user's Plaid access tokens from database
+    // Step 1: Get user's Plaid access tokens from database (optional for general questions)
     const plaidItemsResult = await pool.query(
       'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1',
       [userId]
     );
 
-    if (plaidItemsResult.rows.length === 0) {
+    const hasConnectedAccounts = plaidItemsResult.rows.length > 0;
+    
+    // Check if this is a question that requires transaction data
+    const lowerMessage = message.toLowerCase();
+    const requiresTransactionData = lowerMessage.includes('spent') || 
+                                   lowerMessage.includes('spending') || 
+                                   lowerMessage.includes('my money') ||
+                                   lowerMessage.includes('my transactions') ||
+                                   lowerMessage.includes('last month') ||
+                                   lowerMessage.includes('this month') ||
+                                   lowerMessage.includes('my budget');
+
+    // Only require connected accounts for transaction-specific questions
+    if (requiresTransactionData && !hasConnectedAccounts) {
       return res.status(400).json({
-        error: 'No connected accounts found. Please connect your bank account first.'
+        error: 'To analyze your spending patterns, please connect your bank account first. For general financial advice, I\'m happy to help without account access!'
       });
     }
 
-    // Step 2: Fetch user's transactions from Plaid (last 90 days)
+    // Step 2: Fetch user's transactions from Plaid (last 90 days) - only if accounts are connected
     let transactionData = [];
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - 90);
-    const endDate = new Date();
+    
+    if (hasConnectedAccounts) {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 90);
+      const endDate = new Date();
 
-    try {
-      // Fetch transactions from all connected accounts
-      for (const plaidItem of plaidItemsResult.rows) {
+      try {
+        // Fetch transactions from all connected accounts
+        for (const plaidItem of plaidItemsResult.rows) {
         const transactionsRequest = {
           access_token: plaidItem.access_token,
           start_date: startDate.toISOString().split('T')[0],
@@ -975,6 +1006,7 @@ app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
           is_debit: true
         }
       ];
+      }
     }
 
     // Step 3: Construct the LLM System Prompt
