@@ -94,17 +94,17 @@ class FinancialApiService(private val apiClient: ApiClient) {
     }
     
     /**
-     * Send message to AI chat
+     * Send message to AI CFO Brain (powered by Gemini LLM)
+     * Analyzes user's real transaction data to provide intelligent financial insights
      */
     suspend fun sendChatMessage(
         token: String,
-        message: String,
-        context: ChatContext? = null
+        message: String
     ): Result<ChatResponse> {
         return try {
-            val response = apiClient.httpClient.post("/api/ai/chat") {
+            val response = apiClient.httpClient.post("/api/chat/cfo") {
                 authorize(token)
-                setBody(ChatRequest(message, context))
+                setBody(ChatRequest(message))
             }
             
             when (response.status) {

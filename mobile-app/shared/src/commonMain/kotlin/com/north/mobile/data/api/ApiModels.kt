@@ -88,27 +88,23 @@ data class FinancialGoalData(
     val priority: String
 )
 
-// AI Chat Models
+// AI CFO Brain Models (Gemini-powered)
 @Serializable
 data class ChatRequest(
-    val message: String,
-    val context: ChatContext? = null
+    val message: String
 )
 
+@Serializable
+data class ChatResponse(
+    val response: String
+)
+
+// Legacy Chat Models (for backward compatibility)
 @Serializable
 data class ChatContext(
     val userId: String,
     val conversationId: String? = null,
     val previousMessages: List<String> = emptyList()
-)
-
-@Serializable
-data class ChatResponse(
-    val message: String,
-    val tone: String,
-    val supportingData: List<String> = emptyList(),
-    val recommendations: List<String> = emptyList(),
-    val followUpQuestions: List<String> = emptyList()
 )
 
 // Financial Summary Response
