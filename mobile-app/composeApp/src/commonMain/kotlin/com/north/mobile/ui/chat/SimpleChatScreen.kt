@@ -33,6 +33,7 @@ data class ChatMessage(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SimpleChatScreen(
+    authRepository: AuthRepository,
     onBackClick: () -> Unit
 ) {
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
@@ -154,7 +155,8 @@ fun SimpleChatScreen(
                                     messages,
                                     { messages = it },
                                     { isLoading = it },
-                                    { currentMessage = it }
+                                    { currentMessage = it },
+                                    authRepository
                                 )
                             },
                         colors = CardDefaults.cardColors(
@@ -204,7 +206,8 @@ fun SimpleChatScreen(
                                 messages,
                                 { messages = it },
                                 { isLoading = it },
-                                { currentMessage = it }
+                                { currentMessage = it },
+                                authRepository
                             )
                         }
                     },
@@ -322,7 +325,8 @@ fun sendMessage(
     currentMessages: List<ChatMessage>,
     onMessagesUpdate: (List<ChatMessage>) -> Unit,
     onLoadingUpdate: (Boolean) -> Unit,
-    onCurrentMessageUpdate: (String) -> Unit
+    onCurrentMessageUpdate: (String) -> Unit,
+    authRepository: AuthRepository
 ) {
     // Add user message
     val updatedMessages = currentMessages + ChatMessage(userMessage, true)
@@ -336,7 +340,7 @@ fun sendMessage(
             println("🚀 Starting AI CFO API call for message: '$userMessage'")
             
             // Call the real Gemini-powered AI CFO endpoint
-            val aiResponse = callAICFOApi(userMessage)
+            val aiResponse = callAICFOApi(userMessage, authRepository)
             val finalMessages = updatedMessages + ChatMessage(aiResponse, false)
             
             println("✅ AI CFO response received successfully")
@@ -356,7 +360,7 @@ fun sendMessage(
 }
 
 // Call the real AI CFO API
-suspend fun callAICFOApi(message: String): String {
+suspend fun callAICFOApi(message: String, authRepository: AuthRepository): String {
     return try {
         println("🤖 Calling AI CFO API with message: $message")
         
@@ -365,9 +369,9 @@ suspend fun callAICFOApi(message: String): String {
             com.north.mobile.data.api.ApiClient()
         )
         
-        // Get auth token
-        val token = getAuthToken()
-        println("🔑 Auth token retrieved: ${if (token != null) "✅ Success" else "❌ Failed"}")
+        // Get auth token from the shared auth repository
+        val token = authRepository.getCurrentToken()
+        println("🔑 Auth token retrieved: ${if (token != null) "✅ Success (${token.take(20)}...)" else "❌ Failed"}")
         
         if (token == null) {
             throw Exception("No auth token available - user may not be logged in")
@@ -392,26 +396,5 @@ suspend fun callAICFOApi(message: String): String {
     }
 }
 
-// Get authentication token from the auth repository
-suspend fun getAuthToken(): String? {
-    return try {
-        println("🔐 Getting auth token...")
-        val apiClient = ApiClient()
-        val authApiService = AuthApiService(apiClient)
-        val authRepository = AuthRepository(authApiService)
-        
-        // Initialize session to load stored token
-        println("📱 Initializing session...")
-        authRepository.initializeSession()
-        
-        // Get current token
-        val token = authRepository.getCurrentToken()
-        println("🎫 Token result: ${if (token != null) "Found token (${token.take(20)}...)" else "No token found"}")
-        
-        token
-    } catch (e: Exception) {
-        println("❌ Error getting auth token: ${e.message}")
-        null
-    }
-}
+
 

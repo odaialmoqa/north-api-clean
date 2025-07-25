@@ -148,12 +148,12 @@ app.get('/test-gemini', async (req, res) => {
     if (!genAI) {
       return res.json({ error: 'Gemini not initialized', api_key_exists: !!process.env.GEMINI_API_KEY });
     }
-    
+
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     const result = await model.generateContent('Say hello in a friendly way');
     const response = await result.response;
     const text = response.text();
-    
+
     res.json({ success: true, response: text });
   } catch (error) {
     res.json({ error: error.message, stack: error.stack });
@@ -401,16 +401,16 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
     );
 
     const hasConnectedAccounts = plaidItemsResult.rows.length > 0;
-    
+
     // Check if this is a question that requires transaction data
     const lowerMessage = message.toLowerCase();
-    const requiresTransactionData = lowerMessage.includes('spent') || 
-                                   lowerMessage.includes('spending') || 
-                                   lowerMessage.includes('my money') ||
-                                   lowerMessage.includes('my transactions') ||
-                                   lowerMessage.includes('last month') ||
-                                   lowerMessage.includes('this month') ||
-                                   lowerMessage.includes('my budget');
+    const requiresTransactionData = lowerMessage.includes('spent') ||
+      lowerMessage.includes('spending') ||
+      lowerMessage.includes('my money') ||
+      lowerMessage.includes('my transactions') ||
+      lowerMessage.includes('last month') ||
+      lowerMessage.includes('this month') ||
+      lowerMessage.includes('my budget');
 
     // Only require connected accounts for transaction-specific questions
     if (requiresTransactionData && !hasConnectedAccounts) {
@@ -421,7 +421,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
 
     // Fetch user's transactions from Plaid (last 90 days) - only if accounts are connected
     let transactionData = [];
-    
+
     if (hasConnectedAccounts) {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 90);
@@ -430,53 +430,53 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
       try {
         // Fetch transactions from all connected accounts
         for (const plaidItem of plaidItemsResult.rows) {
-        const transactionsRequest = {
-          access_token: plaidItem.access_token,
-          start_date: startDate.toISOString().split('T')[0],
-          end_date: endDate.toISOString().split('T')[0],
-          count: 100
-        };
+          const transactionsRequest = {
+            access_token: plaidItem.access_token,
+            start_date: startDate.toISOString().split('T')[0],
+            end_date: endDate.toISOString().split('T')[0],
+            count: 100
+          };
 
-        const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
+          const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
 
-        // Transform Plaid transaction format to our format
-        const transformedTransactions = transactionsResponse.data.transactions.map(txn => ({
-          transaction_id: txn.transaction_id,
-          account_id: txn.account_id,
-          amount: Math.abs(txn.amount),
-          date: txn.date,
-          name: txn.name,
-          merchant_name: txn.merchant_name || txn.name,
-          category: txn.category || ['Other'],
-          account_owner: txn.account_owner,
-          institution_name: plaidItem.institution_name,
-          is_debit: txn.amount > 0
-        }));
+          // Transform Plaid transaction format to our format
+          const transformedTransactions = transactionsResponse.data.transactions.map(txn => ({
+            transaction_id: txn.transaction_id,
+            account_id: txn.account_id,
+            amount: Math.abs(txn.amount),
+            date: txn.date,
+            name: txn.name,
+            merchant_name: txn.merchant_name || txn.name,
+            category: txn.category || ['Other'],
+            account_owner: txn.account_owner,
+            institution_name: plaidItem.institution_name,
+            is_debit: txn.amount > 0
+          }));
 
-        transactionData.push(...transformedTransactions);
-      }
-
-      // Sort transactions by date (most recent first)
-      transactionData.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    } catch (plaidError) {
-      console.error('Plaid API error:', plaidError);
-
-      // Fallback to mock data if Plaid fails
-      transactionData = [
-        {
-          transaction_id: 'txn_1',
-          account_id: 'acc_1',
-          amount: 67.00,
-          date: '2024-11-15',
-          name: 'Metro Grocery Store',
-          merchant_name: 'Metro',
-          category: ['Food and Drink', 'Groceries'],
-          account_owner: null,
-          institution_name: 'Mock Bank',
-          is_debit: true
+          transactionData.push(...transformedTransactions);
         }
-      ];
+
+        // Sort transactions by date (most recent first)
+        transactionData.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      } catch (plaidError) {
+        console.error('Plaid API error:', plaidError);
+
+        // Fallback to mock data if Plaid fails
+        transactionData = [
+          {
+            transaction_id: 'txn_1',
+            account_id: 'acc_1',
+            amount: 67.00,
+            date: '2024-11-15',
+            name: 'Metro Grocery Store',
+            merchant_name: 'Metro',
+            category: ['Food and Drink', 'Groceries'],
+            account_owner: null,
+            institution_name: 'Mock Bank',
+            is_debit: true
+          }
+        ];
       }
     }
 
@@ -936,16 +936,16 @@ app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
     );
 
     const hasConnectedAccounts = plaidItemsResult.rows.length > 0;
-    
+
     // Check if this is a question that requires transaction data
     const lowerMessage = message.toLowerCase();
-    const requiresTransactionData = lowerMessage.includes('spent') || 
-                                   lowerMessage.includes('spending') || 
-                                   lowerMessage.includes('my money') ||
-                                   lowerMessage.includes('my transactions') ||
-                                   lowerMessage.includes('last month') ||
-                                   lowerMessage.includes('this month') ||
-                                   lowerMessage.includes('my budget');
+    const requiresTransactionData = lowerMessage.includes('spent') ||
+      lowerMessage.includes('spending') ||
+      lowerMessage.includes('my money') ||
+      lowerMessage.includes('my transactions') ||
+      lowerMessage.includes('last month') ||
+      lowerMessage.includes('this month') ||
+      lowerMessage.includes('my budget');
 
     // Only require connected accounts for transaction-specific questions
     if (requiresTransactionData && !hasConnectedAccounts) {
@@ -956,7 +956,7 @@ app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
 
     // Step 2: Fetch user's transactions from Plaid (last 90 days) - only if accounts are connected
     let transactionData = [];
-    
+
     if (hasConnectedAccounts) {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 90);
@@ -965,66 +965,66 @@ app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
       try {
         // Fetch transactions from all connected accounts
         for (const plaidItem of plaidItemsResult.rows) {
-        const transactionsRequest = {
-          access_token: plaidItem.access_token,
-          start_date: startDate.toISOString().split('T')[0],
-          end_date: endDate.toISOString().split('T')[0],
-          count: 100
-        };
+          const transactionsRequest = {
+            access_token: plaidItem.access_token,
+            start_date: startDate.toISOString().split('T')[0],
+            end_date: endDate.toISOString().split('T')[0],
+            count: 100
+          };
 
-        const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
+          const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
 
-        // Transform Plaid transaction format to our format
-        const transformedTransactions = transactionsResponse.data.transactions.map(txn => ({
-          transaction_id: txn.transaction_id,
-          account_id: txn.account_id,
-          amount: Math.abs(txn.amount), // Plaid uses negative for debits, we want positive amounts
-          date: txn.date,
-          name: txn.name,
-          merchant_name: txn.merchant_name || txn.name,
-          category: txn.category || ['Other'],
-          account_owner: txn.account_owner,
-          institution_name: plaidItem.institution_name,
-          is_debit: txn.amount > 0 // Plaid uses positive for debits
-        }));
+          // Transform Plaid transaction format to our format
+          const transformedTransactions = transactionsResponse.data.transactions.map(txn => ({
+            transaction_id: txn.transaction_id,
+            account_id: txn.account_id,
+            amount: Math.abs(txn.amount), // Plaid uses negative for debits, we want positive amounts
+            date: txn.date,
+            name: txn.name,
+            merchant_name: txn.merchant_name || txn.name,
+            category: txn.category || ['Other'],
+            account_owner: txn.account_owner,
+            institution_name: plaidItem.institution_name,
+            is_debit: txn.amount > 0 // Plaid uses positive for debits
+          }));
 
-        transactionData.push(...transformedTransactions);
-      }
-
-      // Sort transactions by date (most recent first)
-      transactionData.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    } catch (plaidError) {
-      console.error('Plaid API error:', plaidError);
-
-      // Fallback to mock data if Plaid fails
-      console.log('Falling back to mock transaction data');
-      transactionData = [
-        {
-          transaction_id: 'txn_1',
-          account_id: 'acc_1',
-          amount: 67.00,
-          date: '2024-11-15',
-          name: 'Metro Grocery Store',
-          merchant_name: 'Metro',
-          category: ['Food and Drink', 'Groceries'],
-          account_owner: null,
-          institution_name: 'Mock Bank',
-          is_debit: true
-        },
-        {
-          transaction_id: 'txn_2',
-          account_id: 'acc_1',
-          amount: 38.00,
-          date: '2024-11-17',
-          name: 'Loblaws',
-          merchant_name: 'Loblaws',
-          category: ['Food and Drink', 'Groceries'],
-          account_owner: null,
-          institution_name: 'Mock Bank',
-          is_debit: true
+          transactionData.push(...transformedTransactions);
         }
-      ];
+
+        // Sort transactions by date (most recent first)
+        transactionData.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+      } catch (plaidError) {
+        console.error('Plaid API error:', plaidError);
+
+        // Fallback to mock data if Plaid fails
+        console.log('Falling back to mock transaction data');
+        transactionData = [
+          {
+            transaction_id: 'txn_1',
+            account_id: 'acc_1',
+            amount: 67.00,
+            date: '2024-11-15',
+            name: 'Metro Grocery Store',
+            merchant_name: 'Metro',
+            category: ['Food and Drink', 'Groceries'],
+            account_owner: null,
+            institution_name: 'Mock Bank',
+            is_debit: true
+          },
+          {
+            transaction_id: 'txn_2',
+            account_id: 'acc_1',
+            amount: 38.00,
+            date: '2024-11-17',
+            name: 'Loblaws',
+            merchant_name: 'Loblaws',
+            category: ['Food and Drink', 'Groceries'],
+            account_owner: null,
+            institution_name: 'Mock Bank',
+            is_debit: true
+          }
+        ];
       }
     }
 

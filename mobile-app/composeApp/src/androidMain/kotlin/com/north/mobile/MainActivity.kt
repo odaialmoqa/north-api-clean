@@ -143,12 +143,14 @@ fun NorthApp(onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)? = null) {
     var isCheckingSession by remember { mutableStateOf(true) }
     var hasCompletedOnboarding by remember { mutableStateOf(false) }
     
+    // Create shared auth repository
+    val apiClient = remember { com.north.mobile.data.api.ApiClient() }
+    val authApiService = remember { com.north.mobile.data.api.AuthApiService(apiClient) }
+    val authRepository = remember { com.north.mobile.data.repository.AuthRepository(authApiService) }
+    
     // Handle session checking
     LaunchedEffect(Unit) {
         try {
-            val apiClient = com.north.mobile.data.api.ApiClient()
-            val authApiService = com.north.mobile.data.api.AuthApiService(apiClient)
-            val authRepository = com.north.mobile.data.repository.AuthRepository(authApiService)
             
             // Initialize session from stored data
             authRepository.initializeSession()
@@ -333,6 +335,7 @@ fun NorthApp(onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)? = null) {
         
         composable("ai_chat") {
             SimpleChatScreen(
+                authRepository = authRepository,
                 onBackClick = {
                     navController.popBackStack()
                 }

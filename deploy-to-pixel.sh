@@ -23,6 +23,7 @@ echo "✅ Device found: $DEVICES"
 
 # Build the app
 echo "🔨 Building app..."
+cd mobile-app
 ./gradlew composeApp:assembleDebug
 
 if [ $? -ne 0 ]; then
