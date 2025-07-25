@@ -37,7 +37,7 @@ enum class DashboardTab(
     Goals("Goals", Icons.Outlined.Star, Icons.Filled.Star),
     Accounts("Accounts", Icons.Outlined.AccountCircle, Icons.Filled.AccountCircle),
     Insights("Insights", Icons.Outlined.Info, Icons.Filled.Info),
-    CFO("CFO", Icons.Outlined.Email, Icons.Filled.Email)
+    CFO("CFO", Icons.Outlined.AccountBalance, Icons.Filled.AccountBalance)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -839,7 +839,7 @@ fun CFOTabContent(paddingValues: PaddingValues, onNavigateToChat: () -> Unit = {
                 .background(Color(0xFF10B981), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text("💝", fontSize = 60.sp)
+            Text("💰", fontSize = 60.sp)
         }
         
         Spacer(modifier = Modifier.height(24.dp))
