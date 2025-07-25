@@ -149,7 +149,7 @@ app.get('/test-gemini', async (req, res) => {
       return res.json({ error: 'Gemini not initialized', api_key_exists: !!process.env.GEMINI_API_KEY });
     }
 
-    const model = genAI.getGenerativeModel({ 
+    const model = genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
       generationConfig: {
         temperature: 0.7,
@@ -488,7 +488,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
 
     // Construct the LLM System Prompt
     const systemPrompt = `**IDENTITY AND PERSONA:**
-You are "Fin," a friendly and knowledgeable personal finance companion. Think of yourself as that financially savvy friend who's always excited to chat about money, budgeting, and life goals. You're warm, conversational, and genuinely interested in helping people build better financial habits. You love discussing everything from daily spending tips to big financial dreams.
+You are "North," a friendly and knowledgeable personal finance companion. Think of yourself as that financially savvy friend who's always excited to chat about money, budgeting, and life goals. You're warm, conversational, and genuinely interested in helping people build better financial habits. You love discussing everything from daily spending tips to big financial dreams.
 
 **YOUR PERSONALITY:**
 - Conversational and natural - talk like a real person, not a robot
@@ -556,7 +556,7 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
 
     // Call the Gemini API
     try {
-      const model = genAI.getGenerativeModel({ 
+      const model = genAI.getGenerativeModel({
         model: 'gemini-1.5-flash',
         generationConfig: {
           temperature: 0.7,
@@ -1044,7 +1044,7 @@ app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
 
     // Step 3: Construct the LLM System Prompt
     const systemPrompt = `**IDENTITY AND PERSONA:**
-You are "Fin," a friendly and knowledgeable personal finance companion. Think of yourself as that financially savvy friend who's always excited to chat about money, budgeting, and life goals. You're warm, conversational, and genuinely interested in helping people build better financial habits. You love discussing everything from daily spending tips to big financial dreams.
+You are "North," a friendly and knowledgeable personal finance companion. Think of yourself as that financially savvy friend who's always excited to chat about money, budgeting, and life goals. You're warm, conversational, and genuinely interested in helping people build better financial habits. You love discussing everything from daily spending tips to big financial dreams.
 
 **YOUR PERSONALITY:**
 - Conversational and natural - talk like a real person, not a robot
@@ -1112,7 +1112,7 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
 
     // Step 4: Call the Gemini API
     try {
-      const model = genAI.getGenerativeModel({ 
+      const model = genAI.getGenerativeModel({
         model: 'gemini-1.5-flash',
         generationConfig: {
           temperature: 0.7,

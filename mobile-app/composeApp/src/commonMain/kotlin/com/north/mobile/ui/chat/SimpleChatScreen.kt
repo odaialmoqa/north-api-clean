@@ -50,7 +50,7 @@ fun SimpleChatScreen(
     LaunchedEffect(Unit) {
         messages = listOf(
             ChatMessage(
-                message = "👋 Hey there! I'm your Personal CFO and I'm so excited to help you with your finances! Think of me as that supportive friend who's always got your back when it comes to money decisions.\n\nWhat's on your mind today? I can help with budgeting, saving goals, spending decisions, or just chat about your financial dreams! 😊",
+                message = "👋 Hey there! I'm North and I'm so excited to help you with your finances! Think of me as that supportive friend who's always got your back when it comes to money decisions.\n\nWhat's on your mind today? I can help with budgeting, saving goals, spending decisions, or just chat about your financial dreams! 😊",
                 isFromUser = false
             )
         )
@@ -83,7 +83,7 @@ fun SimpleChatScreen(
                     }
                     Column {
                         Text(
-                            "Your Financial Friend",
+                            "North",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold
                         )
