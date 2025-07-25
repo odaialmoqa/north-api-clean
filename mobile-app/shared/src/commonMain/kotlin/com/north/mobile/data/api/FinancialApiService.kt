@@ -102,7 +102,7 @@ class FinancialApiService(private val apiClient: ApiClient) {
         message: String
     ): Result<ChatResponse> {
         return try {
-            val response = apiClient.httpClient.post("/api/chat/cfo") {
+            val response = apiClient.httpClient.post("/api/ai/chat") {
                 authorize(token)
                 setBody(ChatRequest(message))
             }
