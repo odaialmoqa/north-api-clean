@@ -84,7 +84,7 @@ fun AccountConnectionScreen(
             when (uiState.connectionStep) {
                 ConnectionStep.NOT_STARTED -> {
                     ConnectionStartScreen(
-                        onStartConnection = { viewModel.startAccountConnection() },
+                        onStartConnection = { /* No longer needed */ },
                         onLaunchPlaidLink = handlePlaidLinkResult
                     )
                 }
@@ -106,7 +106,7 @@ fun AccountConnectionScreen(
                 ConnectionStep.ERROR -> {
                     ConnectionErrorScreen(
                         errorMessage = uiState.connectionError ?: "An error occurred during connection",
-                        onRetry = { viewModel.startAccountConnection() },
+                        onRetry = { viewModel.resetConnectionState() },
                         onCancel = onBackClick
                     )
                 }

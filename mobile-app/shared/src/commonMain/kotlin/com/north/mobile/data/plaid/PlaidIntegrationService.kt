@@ -44,6 +44,13 @@ data class SimplePlaidLinkResult(
 )
 
 @Serializable
+data class SimpleLinkTokenResult(
+    val success: Boolean,
+    val linkToken: String?,
+    val error: String?
+)
+
+@Serializable
 data class SimpleAccountConnectionResult(
     val success: Boolean,
     val accounts: List<SimplePlaidAccount>,
@@ -58,7 +65,7 @@ data class SimpleTransactionSyncResult(
 )
 
 interface PlaidIntegrationService {
-    suspend fun initializePlaidLink(): SimplePlaidLinkResult
+    suspend fun initializePlaidLink(): SimpleLinkTokenResult
     suspend fun exchangePublicToken(publicToken: String): SimpleAccountConnectionResult
     suspend fun getAccounts(userId: String): List<SimplePlaidAccount>
     suspend fun syncTransactions(accountId: String): SimpleTransactionSyncResult
@@ -72,19 +79,19 @@ class PlaidIntegrationServiceImpl(
     private val getAuthToken: () -> String?
 ) : PlaidIntegrationService {
     
-    override suspend fun initializePlaidLink(): SimplePlaidLinkResult {
+    override suspend fun initializePlaidLink(): SimpleLinkTokenResult {
         return try {
             val token = getAuthToken() ?: throw Exception("No auth token available")
             val response = apiClient.post<LinkTokenResponse>("/api/plaid/create-link-token", emptyMap<String, Any>(), token)
-            SimplePlaidLinkResult(
+            SimpleLinkTokenResult(
                 success = true,
-                publicToken = response.link_token,
+                linkToken = response.link_token,
                 error = null
             )
         } catch (e: Exception) {
-            SimplePlaidLinkResult(
+            SimpleLinkTokenResult(
                 success = false,
-                publicToken = null,
+                linkToken = null,
                 error = e.message ?: "Failed to create link token"
             )
         }

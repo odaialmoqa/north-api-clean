@@ -4,7 +4,7 @@ import androidx.compose.runtime.*
 import com.north.mobile.data.auth.SessionManager
 import com.north.mobile.data.plaid.PlaidIntegrationService
 import com.north.mobile.data.plaid.SimplePlaidAccount
-import com.north.mobile.data.plaid.SimplePlaidLinkResult
+import com.north.mobile.data.plaid.SimpleLinkTokenResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,40 +22,14 @@ class AccountConnectionViewModel(
     }
     
     fun startAccountConnection() {
+        // This method is no longer needed since the UI handles the Plaid Link flow directly
+        // Just reset the connection state
         _uiState = _uiState.copy(
-            isConnecting = true,
-            connectionStep = ConnectionStep.INITIALIZING
+            isConnecting = false,
+            connectionStep = ConnectionStep.NOT_STARTED,
+            connectionSuccess = false,
+            connectionError = null
         )
-        
-        coroutineScope.launch {
-            try {
-                // Initialize Plaid Link
-                _uiState = _uiState.copy(connectionStep = ConnectionStep.INITIALIZING)
-                val linkResult = plaidService.initializePlaidLink()
-                
-                val publicToken = linkResult.publicToken
-                if (linkResult.success && publicToken != null) {
-                    // Successfully got public token, now exchange it
-                    exchangePublicToken(publicToken)
-                } else {
-                    // Failed to get public token
-                    _uiState = _uiState.copy(
-                        isConnecting = false,
-                        connectionStep = ConnectionStep.ERROR,
-                        connectionSuccess = false,
-                        connectionError = linkResult.error ?: "Failed to initialize connection"
-                    )
-                }
-            } catch (e: Exception) {
-                // Handle any exceptions
-                _uiState = _uiState.copy(
-                    isConnecting = false,
-                    connectionStep = ConnectionStep.ERROR,
-                    connectionSuccess = false,
-                    connectionError = e.message ?: "An unexpected error occurred"
-                )
-            }
-        }
     }
     
     fun exchangePublicToken(publicToken: String) {

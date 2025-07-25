@@ -10,7 +10,7 @@ class AndroidPlaidIntegrationService(
     private val application: Application,
     private val backendService: PlaidIntegrationService // Use your existing backend service for API calls
 ) : PlaidIntegrationService {
-    override suspend fun initializePlaidLink(): SimplePlaidLinkResult {
+    override suspend fun initializePlaidLink(): SimpleLinkTokenResult {
         // Get link token from backend
         return backendService.initializePlaidLink()
     }

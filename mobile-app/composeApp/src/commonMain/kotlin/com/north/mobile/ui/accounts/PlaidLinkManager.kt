@@ -1,7 +1,7 @@
 package com.north.mobile.ui.accounts
 
 import com.north.mobile.data.plaid.PlaidIntegrationService
-import com.north.mobile.data.plaid.SimplePlaidLinkResult
+import com.north.mobile.data.plaid.SimpleLinkTokenResult
 import com.north.mobile.data.plaid.SimpleAccountConnectionResult
 
 /**
@@ -14,7 +14,7 @@ class PlaidLinkManager(
     /**
      * Initialize Plaid Link and get the link token
      */
-    suspend fun initializePlaidLink(): SimplePlaidLinkResult {
+    suspend fun initializePlaidLink(): SimpleLinkTokenResult {
         return plaidService.initializePlaidLink()
     }
     
