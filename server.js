@@ -698,7 +698,7 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
   try {
     const userId = 'test-user-123'; // Use test user for now
 
-    // Create link token request with redirect URIs for OAuth banks
+    // Create link token request - use android_package_name for mobile
     const linkTokenRequest = {
       user: {
         client_user_id: userId
@@ -707,7 +707,6 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
       products: ['transactions'],
       country_codes: ['US', 'CA'],
       language: 'en',
-      redirect_uri: 'https://north-mobile.app/plaid',
       android_package_name: 'com.north.mobile'
     };
 
