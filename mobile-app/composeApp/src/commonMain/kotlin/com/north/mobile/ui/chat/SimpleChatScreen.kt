@@ -16,6 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -261,7 +265,7 @@ fun ChatMessageBubble(message: ChatMessage) {
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Text(
-                message.message,
+                text = parseMarkdown(message.message),
                 modifier = Modifier.padding(12.dp),
                 color = if (message.isFromUser) 
                     MaterialTheme.colorScheme.onPrimary 
@@ -457,6 +461,56 @@ suspend fun createTestToken(): String? {
     } catch (e: Exception) {
         println("💥 Exception creating test token: ${e.message}")
         null
+    }
+}
+
+// Parse basic markdown formatting for chat messages
+@Composable
+fun parseMarkdown(text: String): androidx.compose.ui.text.AnnotatedString {
+    return buildAnnotatedString {
+        var currentIndex = 0
+        val length = text.length
+        
+        while (currentIndex < length) {
+            when {
+                // Handle **bold** text
+                text.startsWith("**", currentIndex) -> {
+                    val endIndex = text.indexOf("**", currentIndex + 2)
+                    if (endIndex != -1) {
+                        withStyle(style = SpanStyle(fontWeight = FontWeight.Bold)) {
+                            append(text.substring(currentIndex + 2, endIndex))
+                        }
+                        currentIndex = endIndex + 2
+                    } else {
+                        append(text[currentIndex])
+                        currentIndex++
+                    }
+                }
+                // Handle *italic* text
+                text.startsWith("*", currentIndex) && !text.startsWith("**", currentIndex) -> {
+                    val endIndex = text.indexOf("*", currentIndex + 1)
+                    if (endIndex != -1) {
+                        withStyle(style = SpanStyle(fontStyle = FontStyle.Italic)) {
+                            append(text.substring(currentIndex + 1, endIndex))
+                        }
+                        currentIndex = endIndex + 1
+                    } else {
+                        append(text[currentIndex])
+                        currentIndex++
+                    }
+                }
+                // Handle bullet points (• or -)
+                text.startsWith("• ", currentIndex) || text.startsWith("- ", currentIndex) -> {
+                    append("• ")
+                    currentIndex += 2
+                }
+                // Regular text
+                else -> {
+                    append(text[currentIndex])
+                    currentIndex++
+                }
+            }
+        }
     }
 }
 
