@@ -149,7 +149,13 @@ app.get('/test-gemini', async (req, res) => {
       return res.json({ error: 'Gemini not initialized', api_key_exists: !!process.env.GEMINI_API_KEY });
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 512,
+      }
+    });
     const result = await model.generateContent('Say hello in a friendly way');
     const response = await result.response;
     const text = response.text();
@@ -550,7 +556,15 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
 
     // Call the Gemini API
     try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-1.5-flash',
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 1024,
+        }
+      });
       const result = await model.generateContent(systemPrompt);
       const response = await result.response;
       const aiResponse = response.text();
@@ -1098,7 +1112,15 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
 
     // Step 4: Call the Gemini API
     try {
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ 
+        model: 'gemini-1.5-flash',
+        generationConfig: {
+          temperature: 0.7,
+          topK: 40,
+          topP: 0.95,
+          maxOutputTokens: 1024,
+        }
+      });
       const result = await model.generateContent(systemPrompt);
       const response = await result.response;
       const aiResponse = response.text();

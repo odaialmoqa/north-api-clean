@@ -75,7 +75,7 @@ fun SimpleChatScreen(
                             .background(Color(0xFF10B981), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("💝", fontSize = 20.sp)
+                        Text("💰", fontSize = 20.sp)
                     }
                     Column {
                         Text(
@@ -240,7 +240,7 @@ fun ChatMessageBubble(message: ChatMessage) {
                     .background(Color(0xFF10B981), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("💝", fontSize = 20.sp)
+                Text("💰", fontSize = 20.sp)
             }
             Spacer(modifier = Modifier.width(8.dp))
         }
@@ -296,7 +296,7 @@ fun ChatLoadingBubble() {
                 .background(Color(0xFF10B981), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text("💝", fontSize = 20.sp)
+            Text("💰", fontSize = 20.sp)
         }
         Spacer(modifier = Modifier.width(8.dp))
         
@@ -381,21 +381,30 @@ suspend fun callAICFOApi(message: String, authRepository: AuthRepository): Strin
         val currentUser = authRepository.currentUser.value
         println("👤 Current user: ${if (currentUser != null) "✅ Found user: ${currentUser.email}" else "❌ No user found"}")
         
-        // TEMPORARY WORKAROUND: Create a test token if none exists
+        // If no token found, try to re-initialize the session
         if (token == null) {
-            println("🔧 No token found, creating test token for AI testing...")
+            println("🔧 No token found, attempting to re-initialize session...")
             try {
-                // Create a test user and get a real token
-                val testToken = createTestToken()
-                if (testToken != null) {
-                    token = testToken
-                    println("✅ Test token created successfully: ${token.take(20)}...")
+                // Force re-initialization of the auth repository
+                authRepository.initializeSession()
+                token = authRepository.getCurrentToken()
+                
+                if (token != null) {
+                    println("✅ Token found after re-initialization: ${token.take(20)}...")
                 } else {
-                    throw Exception("Failed to create test token")
+                    println("🧪 Still no token, creating test token for AI testing...")
+                    // Fallback to test token creation
+                    val testToken = createTestToken()
+                    if (testToken != null) {
+                        token = testToken
+                        println("✅ Test token created successfully: ${token.take(20)}...")
+                    } else {
+                        throw Exception("Failed to create test token")
+                    }
                 }
             } catch (e: Exception) {
-                println("❌ Test token creation failed: ${e.message}")
-                throw Exception("No auth token available and test token creation failed")
+                println("❌ Token recovery failed: ${e.message}")
+                throw Exception("No auth token available and recovery failed")
             }
         }
         
