@@ -698,7 +698,7 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
   try {
     const userId = 'test-user-123'; // Use test user for now
 
-    // Create link token request - use android_package_name for mobile
+    // Create link token request - force full UI experience
     const linkTokenRequest = {
       user: {
         client_user_id: userId
@@ -707,7 +707,10 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
       products: ['transactions'],
       country_codes: ['US', 'CA'],
       language: 'en',
-      android_package_name: 'com.north.mobile'
+      android_package_name: 'com.north.mobile',
+      // Force full institution selection experience
+      webhook: null, // No webhook for testing
+      link_customization_name: null // Use default UI
     };
 
     const response = await plaidClient.linkTokenCreate(linkTokenRequest);
