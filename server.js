@@ -694,9 +694,9 @@ function generateRegularCFOResponse(message, conversationHistory, context, userI
 // Plaid Integration Endpoints
 
 // Create Plaid Link Token (temporarily allowing unauthenticated access for testing)
-app.post('/api/plaid/create-link-token', authenticateToken, async (req, res) => {
+app.post('/api/plaid/create-link-token', async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = 'test-user-123'; // Use test user for now
 
     // Create link token request with redirect URIs for OAuth banks
     const linkTokenRequest = {
