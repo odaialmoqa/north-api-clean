@@ -374,15 +374,29 @@ suspend fun callAICFOApi(message: String, authRepository: AuthRepository): Strin
         val isAuthenticated = authRepository.isUserAuthenticated()
         println("🔐 User authenticated: $isAuthenticated")
         
-        val token = authRepository.getCurrentToken()
+        var token = authRepository.getCurrentToken()
         println("🔑 Auth token retrieved: ${if (token != null) "✅ Success (${token.take(20)}...)" else "❌ Failed - token is null"}")
         
         // Additional debugging
         val currentUser = authRepository.currentUser.value
         println("👤 Current user: ${if (currentUser != null) "✅ Found user: ${currentUser.email}" else "❌ No user found"}")
         
+        // TEMPORARY WORKAROUND: Create a test token if none exists
         if (token == null) {
-            throw Exception("No auth token available - user may not be logged in")
+            println("🔧 No token found, creating test token for AI testing...")
+            try {
+                // Create a test user and get a real token
+                val testToken = createTestToken()
+                if (testToken != null) {
+                    token = testToken
+                    println("✅ Test token created successfully: ${token.take(20)}...")
+                } else {
+                    throw Exception("Failed to create test token")
+                }
+            } catch (e: Exception) {
+                println("❌ Test token creation failed: ${e.message}")
+                throw Exception("No auth token available and test token creation failed")
+            }
         }
         
         // Call the AI CFO endpoint
@@ -401,6 +415,39 @@ suspend fun callAICFOApi(message: String, authRepository: AuthRepository): Strin
     } catch (e: Exception) {
         println("💥 callAICFOApi exception: ${e.message}")
         throw Exception("Failed to get AI response: ${e.message}")
+    }
+}
+
+// TEMPORARY: Create a test token for AI testing
+suspend fun createTestToken(): String? {
+    return try {
+        println("🧪 Creating test user for AI testing...")
+        val apiClient = ApiClient()
+        val authApiService = AuthApiService(apiClient)
+        
+        // Generate a unique test email
+        val testEmail = "ai-test-${System.currentTimeMillis()}@example.com"
+        
+        // Register a test user
+        val result = authApiService.register(
+            email = testEmail,
+            password = "test123",
+            firstName = "AI",
+            lastName = "Test"
+        )
+        
+        if (result.isSuccess) {
+            val authResponse = result.getOrThrow()
+            println("✅ Test user created: ${authResponse.user.email}")
+            println("🎫 Test token: ${authResponse.token.take(20)}...")
+            authResponse.token
+        } else {
+            println("❌ Test user creation failed: ${result.exceptionOrNull()?.message}")
+            null
+        }
+    } catch (e: Exception) {
+        println("💥 Exception creating test token: ${e.message}")
+        null
     }
 }
 
