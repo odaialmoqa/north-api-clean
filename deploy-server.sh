@@ -25,8 +25,6 @@ print_warning() {
 if command -v railway &> /dev/null; then
     print_status "Railway CLI found. Deploying to Railway..."
     
-    cd north-backend-only
-    
     # Check if already connected to Railway project
     if [ -f ".railway/project.json" ]; then
         print_status "Existing Railway project found. Deploying..."
@@ -49,9 +47,8 @@ else
     print_status "Railway CLI installed. Please run this script again or deploy manually:"
     echo ""
     echo "Manual deployment steps:"
-    echo "1. cd north-backend-only"
-    echo "2. railway login"
-    echo "3. railway up"
+    echo "1. railway login"
+    echo "2. railway up"
     echo ""
 fi
 

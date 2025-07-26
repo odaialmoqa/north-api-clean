@@ -8,15 +8,37 @@ const jwt = require('jsonwebtoken');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Only load .env file in development
+// Load .env file (always load in development, skip in production)
 if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config();
+} else if (!process.env.NODE_ENV) {
+  // If NODE_ENV is not set, assume development and load .env
   require('dotenv').config();
 }
 
 // Plaid configuration
-const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID || '5fdecaa7df1def0013986738';
-const PLAID_SECRET = process.env.PLAID_SECRET || '084141a287c71fd8f75cdc71c796b1';
+const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
+const PLAID_SECRET = process.env.PLAID_SECRET;
 const PLAID_ENV = process.env.PLAID_ENV || 'sandbox'; // sandbox, development, or production
+
+// Validate required environment variables (warnings only in development)
+if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ Missing required Plaid configuration. Please set PLAID_CLIENT_ID and PLAID_SECRET in your environment variables.');
+    process.exit(1);
+  } else {
+    console.warn('⚠️ Missing Plaid configuration. Plaid features will be disabled.');
+  }
+}
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.includes('your-super-long-random-secret')) {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ Missing or default JWT_SECRET environment variable. This is required for authentication.');
+    process.exit(1);
+  } else {
+    console.warn('⚠️ Using default JWT_SECRET. Please set a secure JWT_SECRET for production.');
+  }
+}
 
 console.log('=== PLAID CONFIGURATION ===');
 console.log('PLAID_CLIENT_ID:', PLAID_CLIENT_ID);
@@ -109,9 +131,8 @@ async function testDatabaseConnection() {
     client.release();
     return true;
   } catch (error) {
-    console.error('❌ Database connection failed:');
-    console.error('Error message:', error.message);
-    console.error('Error code:', error.code);
+    console.warn('⚠️ Database connection failed (continuing anyway):');
+    console.warn('Error message:', error.message);
     return false;
   }
 }
@@ -120,6 +141,15 @@ async function testDatabaseConnection() {
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`📥 ${req.method} ${req.path} - ${new Date().toISOString()}`);
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log('📦 Body:', JSON.stringify(req.body));
+  }
+  next();
+});
 
 // Rate limiting
 const limiter = rateLimit({
@@ -383,11 +413,23 @@ app.get('/api/goals', authenticateToken, async (req, res) => {
 // Legacy AI Chat endpoint - Redirects to new AI CFO Brain
 app.post('/api/ai/chat', authenticateToken, async (req, res) => {
   try {
+    console.log('=== AI CHAT DEBUG ===');
+    console.log('Request body:', JSON.stringify(req.body));
+    console.log('User:', req.user);
+
     const { message } = req.body;
 
-    if (!message) {
+    console.log('Extracted message:', JSON.stringify(message));
+    console.log('Message type:', typeof message);
+    console.log('Message length:', message?.length);
+    console.log('Is message falsy?', !message);
+
+    if (!message || typeof message !== 'string' || message.trim().length === 0) {
+      console.log('❌ Returning 400 - Message is required');
       return res.status(400).json({ error: 'Message is required' });
     }
+
+    console.log('✅ Message validation passed');
 
     // Redirect to the new AI CFO Brain endpoint logic
     // This ensures backward compatibility while using the new Gemini-powered system
@@ -401,12 +443,19 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
     }
 
     // Get user's Plaid access tokens from database (optional for general questions)
-    const plaidItemsResult = await pool.query(
-      'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1',
-      [userId]
-    );
+    let hasConnectedAccounts = false;
+    let plaidItemsResult = { rows: [] };
 
-    const hasConnectedAccounts = plaidItemsResult.rows.length > 0;
+    try {
+      plaidItemsResult = await pool.query(
+        'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1',
+        [userId]
+      );
+      hasConnectedAccounts = plaidItemsResult.rows.length > 0;
+    } catch (dbError) {
+      console.warn('⚠️ Database query failed, continuing without account data:', dbError.message);
+      hasConnectedAccounts = false;
+    }
 
     // Check if this is a question that requires transaction data
     const lowerMessage = message.toLowerCase();
@@ -418,12 +467,13 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
       lowerMessage.includes('this month') ||
       lowerMessage.includes('my budget');
 
-    // Only require connected accounts for transaction-specific questions
-    if (requiresTransactionData && !hasConnectedAccounts) {
-      return res.status(400).json({
-        error: 'To analyze your spending patterns, please connect your bank account first. For general financial advice, I\'m happy to help without account access!'
-      });
-    }
+    // TEMPORARILY DISABLED - Allow all questions for general financial advice
+    // Only require connected accounts for very specific transaction-specific questions
+    // if (requiresTransactionData && !hasConnectedAccounts) {
+    //   return res.status(400).json({
+    //     error: 'To analyze your spending patterns, please connect your bank account first. For general financial advice, I\'m happy to help without account access!'
+    //   });
+    // }
 
     // Fetch user's transactions from Plaid (last 90 days) - only if accounts are connected
     let transactionData = [];
@@ -927,8 +977,12 @@ function generateRegularCFOResponse(message, conversationHistory, context, userI
 }
 
 // AI Personal CFO Brain - LLM Gateway Service
-app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
+app.post('/api/cfo/chat', authenticateToken, async (req, res) => {
   try {
+    console.log('=== CFO CHAT DEBUG ===');
+    console.log('Request body:', JSON.stringify(req.body));
+    console.log('User:', req.user);
+    
     const { message } = req.body;
     const userId = req.user.userId;
 
@@ -961,12 +1015,13 @@ app.post('/api/chat/cfo', authenticateToken, async (req, res) => {
       lowerMessage.includes('this month') ||
       lowerMessage.includes('my budget');
 
-    // Only require connected accounts for transaction-specific questions
-    if (requiresTransactionData && !hasConnectedAccounts) {
-      return res.status(400).json({
-        error: 'To analyze your spending patterns, please connect your bank account first. For general financial advice, I\'m happy to help without account access!'
-      });
-    }
+    // TEMPORARILY DISABLED - Allow all questions for general financial advice
+    // Only require connected accounts for very specific transaction-specific questions
+    // if (requiresTransactionData && !hasConnectedAccounts) {
+    //   return res.status(400).json({
+    //     error: 'To analyze your spending patterns, please connect your bank account first. For general financial advice, I\'m happy to help without account access!'
+    //   });
+    // }
 
     // Step 2: Fetch user's transactions from Plaid (last 90 days) - only if accounts are connected
     let transactionData = [];
