@@ -23,7 +23,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.north.mobile.data.api.ChatMessage
-import com.north.mobile.ui.accounts.PlaidLinkButton
+// PlaidLinkButton import removed - now handled in WealthsimpleDashboard.kt
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -185,6 +185,7 @@ fun HomeTabContent(paddingValues: PaddingValues, onNavigateToChat: () -> Unit = 
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         item { PersonalCFOStartCard(onNavigateToChat) }
+
         item { DailyChallengeCard() }
         item { GamificationProgressCard() }
         item { ActiveStreaksCard() }
@@ -742,10 +743,7 @@ fun AccountsTabContent(paddingValues: PaddingValues) {
             )
         }
         
-        // Plaid connection card
-        item {
-            PlaidConnectionCard()
-        }
+
         
         // Info about security
         item {
@@ -780,23 +778,7 @@ fun AccountsTabContent(paddingValues: PaddingValues) {
     }
 }
 
-@Composable
-fun PlaidConnectionCard() {
-    PlaidLinkButton(
-        onSuccess = { publicToken ->
-            println("Plaid Link successful! Public token: $publicToken")
-            // Here you would typically:
-            // 1. Send the public token to your backend
-            // 2. Exchange it for an access token
-            // 3. Fetch account data
-            // 4. Update the UI to show connected accounts
-        },
-        onError = { error ->
-            println("Plaid Link error: $error")
-            // Handle error - show user-friendly message
-        }
-    )
-}
+// Bank connection components removed - now handled in WealthsimpleDashboard.kt
 
 @Composable
 fun InsightsTabContent(paddingValues: PaddingValues) {

@@ -115,6 +115,139 @@ async function initDatabase() {
       );
     `);
 
+    // Create transactions table for storing Plaid transaction data
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plaid_transaction_id VARCHAR(255) NOT NULL UNIQUE,
+        account_id VARCHAR(255) NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        description TEXT NOT NULL,
+        category TEXT[],
+        subcategory VARCHAR(255),
+        date DATE NOT NULL,
+        merchant_name VARCHAR(255),
+        is_recurring BOOLEAN DEFAULT FALSE,
+        confidence_level DECIMAL(3,2),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create spending_insights table for AI-generated insights
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS spending_insights (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        insight_type VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        category VARCHAR(100),
+        amount DECIMAL(10,2),
+        confidence_score DECIMAL(3,2),
+        action_items TEXT[],
+        is_read BOOLEAN DEFAULT FALSE,
+        expires_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create dynamic_goals table for AI-generated goals
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS dynamic_goals (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        goal_type VARCHAR(50) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        target_amount DECIMAL(10,2),
+        current_amount DECIMAL(10,2) DEFAULT 0,
+        target_date DATE,
+        category VARCHAR(100),
+        priority INTEGER DEFAULT 5,
+        status VARCHAR(20) DEFAULT 'active',
+        ai_generated BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create spending_patterns table for trend analysis
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS spending_patterns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        category VARCHAR(100) NOT NULL,
+        period_type VARCHAR(20) NOT NULL,
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        total_amount DECIMAL(10,2) NOT NULL,
+        transaction_count INTEGER NOT NULL,
+        average_transaction DECIMAL(10,2) NOT NULL,
+        trend_direction VARCHAR(20),
+        trend_percentage DECIMAL(5,2),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create user_memory table for comprehensive memory system
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_memory (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        memory_data JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id)
+      );
+    `);
+
+    // Create conversation_sessions table for chat history
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS conversation_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        session_id VARCHAR(255) NOT NULL,
+        start_time TIMESTAMP DEFAULT NOW(),
+        end_time TIMESTAMP,
+        topics TEXT[],
+        insights TEXT[],
+        action_items TEXT[],
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create chat_messages table for individual messages
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID NOT NULL REFERENCES conversation_sessions(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        message TEXT NOT NULL,
+        is_from_user BOOLEAN NOT NULL,
+        topics TEXT[],
+        entities TEXT[],
+        sentiment VARCHAR(50),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create user_insights table for knowledge graph
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_insights (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        insight TEXT NOT NULL,
+        category VARCHAR(100) NOT NULL,
+        confidence DECIMAL(3,2) DEFAULT 0.8,
+        evidence TEXT[],
+        actionable BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     console.log('✅ Database tables initialized');
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
@@ -224,7 +357,7 @@ app.get('/health', async (req, res) => {
 // API info endpoint
 app.get('/api', (req, res) => {
   res.json({
-    name: 'North Financial API',
+    name: 'North API',
     version: '1.0.0-alpha',
     status: 'running'
   });
@@ -376,37 +509,109 @@ app.get('/api/financial/summary', authenticateToken, async (req, res) => {
   }
 });
 
-// Get user's goals
+// Get user's goals - Enhanced with dynamic goals
 app.get('/api/goals', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Mock goals data - replace with real database queries
-    const goals = [
-      {
-        id: 'goal_1',
-        userId: userId,
-        title: 'Emergency Fund',
-        targetAmount: 10000.00,
-        currentAmount: 8500.00,
-        targetDate: '2025-12-31',
-        priority: 'high'
-      },
-      {
-        id: 'goal_2',
-        userId: userId,
-        title: 'New Car Fund',
-        targetAmount: 25000.00,
-        currentAmount: 12000.00,
-        targetDate: '2026-06-30',
-        priority: 'medium'
+    // Get dynamic goals from database
+    const result = await pool.query(`
+      SELECT id, goal_type, title, description, target_amount, current_amount,
+             target_date, category, priority, status, ai_generated, created_at
+      FROM dynamic_goals 
+      WHERE user_id = $1 AND status = 'active'
+      ORDER BY priority DESC, created_at DESC
+    `, [userId]);
+
+    const goals = result.rows.map(goal => ({
+      id: goal.id,
+      userId: userId,
+      goalType: goal.goal_type,
+      title: goal.title,
+      description: goal.description,
+      targetAmount: parseFloat(goal.target_amount),
+      currentAmount: parseFloat(goal.current_amount),
+      targetDate: goal.target_date,
+      category: goal.category,
+      priority: goal.priority,
+      status: goal.status,
+      aiGenerated: goal.ai_generated,
+      progressPercentage: Math.round((parseFloat(goal.current_amount) / parseFloat(goal.target_amount)) * 100),
+      remainingAmount: parseFloat(goal.target_amount) - parseFloat(goal.current_amount),
+      createdAt: goal.created_at
+    }));
+
+    // If no goals exist, create some default ones
+    if (goals.length === 0) {
+      const defaultGoals = [
+        {
+          goal_type: 'emergency_fund',
+          title: 'Emergency Fund',
+          description: 'Build a safety net for unexpected expenses',
+          target_amount: 10000,
+          category: 'Savings',
+          priority: 10
+        },
+        {
+          goal_type: 'savings',
+          title: 'Vacation Fund',
+          description: 'Save for your next adventure',
+          target_amount: 5000,
+          category: 'Travel',
+          priority: 7
+        }
+      ];
+
+      for (const goal of defaultGoals) {
+        const targetDate = new Date();
+        targetDate.setMonth(targetDate.getMonth() + 12);
+
+        await pool.query(`
+          INSERT INTO dynamic_goals (
+            user_id, goal_type, title, description, target_amount,
+            target_date, category, priority, ai_generated
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
+          userId,
+          goal.goal_type,
+          goal.title,
+          goal.description,
+          goal.target_amount,
+          targetDate.toISOString().split('T')[0],
+          goal.category,
+          goal.priority,
+          false
+        ]);
       }
-    ];
+
+      // Return the newly created goals
+      return res.redirect('/api/goals');
+    }
 
     res.json(goals);
   } catch (error) {
     console.error('Goals fetch error:', error);
     res.status(500).json({ error: 'Failed to fetch goals' });
+  }
+});
+
+// Update goal progress
+app.post('/api/goals/:goalId/progress', authenticateToken, async (req, res) => {
+  try {
+    const { goalId } = req.params;
+    const { amount } = req.body;
+    const userId = req.user.userId;
+
+    await pool.query(`
+      UPDATE dynamic_goals 
+      SET current_amount = current_amount + $1, updated_at = NOW()
+      WHERE id = $2 AND user_id = $3
+    `, [amount, goalId, userId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update goal progress error:', error);
+    res.status(500).json({ error: 'Failed to update goal progress' });
   }
 });
 
@@ -475,45 +680,70 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
     //   });
     // }
 
-    // Fetch user's transactions from Plaid (last 90 days) - only if accounts are connected
+    // Get user's financial data from database
     let transactionData = [];
+    let insightsData = [];
+    let goalsData = [];
+    let spendingPatterns = [];
 
     if (hasConnectedAccounts) {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 90);
-      const endDate = new Date();
-
       try {
-        // Fetch transactions from all connected accounts
-        for (const plaidItem of plaidItemsResult.rows) {
-          const transactionsRequest = {
-            access_token: plaidItem.access_token,
-            start_date: startDate.toISOString().split('T')[0],
-            end_date: endDate.toISOString().split('T')[0],
-            count: 100
-          };
+        // Get recent transactions from database
+        const transactionsResult = await pool.query(`
+          SELECT 
+            plaid_transaction_id, account_id, amount, description, category,
+            subcategory, date, merchant_name
+          FROM transactions 
+          WHERE user_id = $1 AND date >= NOW() - INTERVAL '90 days'
+          ORDER BY date DESC
+          LIMIT 100
+        `, [userId]);
+        
+        transactionData = transactionsResult.rows.map(txn => ({
+          transaction_id: txn.plaid_transaction_id,
+          account_id: txn.account_id,
+          amount: Math.abs(parseFloat(txn.amount)),
+          date: txn.date,
+          name: txn.description,
+          merchant_name: txn.merchant_name || txn.description,
+          category: txn.category || ['Other'],
+          is_debit: parseFloat(txn.amount) < 0
+        }));
 
-          const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
+        // Get user's insights
+        const insightsResult = await pool.query(`
+          SELECT insight_type, title, description, category, amount, confidence_score
+          FROM spending_insights 
+          WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+          ORDER BY confidence_score DESC, created_at DESC
+          LIMIT 10
+        `, [userId]);
+        
+        insightsData = insightsResult.rows;
 
-          // Transform Plaid transaction format to our format
-          const transformedTransactions = transactionsResponse.data.transactions.map(txn => ({
-            transaction_id: txn.transaction_id,
-            account_id: txn.account_id,
-            amount: Math.abs(txn.amount),
-            date: txn.date,
-            name: txn.name,
-            merchant_name: txn.merchant_name || txn.name,
-            category: txn.category || ['Other'],
-            account_owner: txn.account_owner,
-            institution_name: plaidItem.institution_name,
-            is_debit: txn.amount > 0
-          }));
+        // Get user's goals
+        const goalsResult = await pool.query(`
+          SELECT goal_type, title, description, target_amount, current_amount, 
+                 target_date, category, priority
+          FROM dynamic_goals 
+          WHERE user_id = $1 AND status = 'active'
+          ORDER BY priority DESC
+          LIMIT 10
+        `, [userId]);
+        
+        goalsData = goalsResult.rows;
 
-          transactionData.push(...transformedTransactions);
-        }
-
-        // Sort transactions by date (most recent first)
-        transactionData.sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Get spending patterns
+        const patternsResult = await pool.query(`
+          SELECT category, total_amount, transaction_count, average_transaction,
+                 trend_direction, trend_percentage, period_start
+          FROM spending_patterns 
+          WHERE user_id = $1 AND period_type = 'monthly'
+          ORDER BY period_start DESC, total_amount DESC
+          LIMIT 10
+        `, [userId]);
+        
+        spendingPatterns = patternsResult.rows;
 
       } catch (plaidError) {
         console.error('Plaid API error:', plaidError);
@@ -536,9 +766,59 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
       }
     }
 
-    // Construct the LLM System Prompt
+    // Construct the enhanced LLM System Prompt with real data
     const systemPrompt = `**IDENTITY AND PERSONA:**
-You are "North," a friendly and knowledgeable personal finance companion. Think of yourself as that financially savvy friend who's always excited to chat about money, budgeting, and life goals. You're warm, conversational, and genuinely interested in helping people build better financial habits. You love discussing everything from daily spending tips to big financial dreams.
+You are "North," the user's personal CFO and financial companion. You have access to their real financial data, spending patterns, AI-generated insights, and personalized goals. You know their financial habits intimately and can provide specific, actionable advice based on their actual spending behavior.
+
+**USER'S FINANCIAL PROFILE:**
+${hasConnectedAccounts ? `
+Connected Accounts: ${plaidItemsResult.rows.length} bank account(s) linked
+Recent Transactions: ${transactionData.length} transactions in the last 90 days
+Total Recent Spending: $${transactionData.reduce((sum, txn) => sum + (txn.is_debit ? txn.amount : 0), 0).toFixed(2)}
+
+**SPENDING PATTERNS:**
+${spendingPatterns.map(pattern => 
+  `• ${pattern.category}: $${parseFloat(pattern.total_amount).toFixed(2)}/month (${pattern.transaction_count} transactions, trending ${pattern.trend_direction || 'stable'})`
+).join('\n')}
+
+**AI-GENERATED INSIGHTS:**
+${insightsData.map(insight => 
+  `• ${insight.title}: ${insight.description} (${Math.round(parseFloat(insight.confidence_score) * 100)}% confidence)`
+).join('\n')}
+
+**ACTIVE GOALS:**
+${goalsData.map(goal => 
+  `• ${goal.title}: ${goal.description} (Target: $${parseFloat(goal.target_amount).toFixed(2)}, Progress: $${parseFloat(goal.current_amount).toFixed(2)})`
+).join('\n')}
+
+**TOP SPENDING CATEGORIES (Last 90 days):**
+${transactionData.reduce((acc, txn) => {
+  if (txn.is_debit) {
+    const category = txn.category[0] || 'Other';
+    acc[category] = (acc[category] || 0) + txn.amount;
+  }
+  return acc;
+}, {})
+  ? Object.entries(transactionData.reduce((acc, txn) => {
+      if (txn.is_debit) {
+        const category = txn.category[0] || 'Other';
+        acc[category] = (acc[category] || 0) + txn.amount;
+      }
+      return acc;
+    }, {}))
+    .sort(([,a], [,b]) => b - a)
+    .slice(0, 5)
+    .map(([category, amount]) => `• ${category}: $${amount.toFixed(2)}`)
+    .join('\n')
+  : 'No spending data available'}
+` : 'No bank accounts connected yet - providing general financial advice'}
+
+**YOUR ENHANCED CAPABILITIES:**
+- Reference specific transactions and spending patterns
+- Provide personalized insights based on actual data
+- Track progress toward their specific goals
+- Identify spending trends and opportunities
+- Create actionable recommendations based on their behavior
 
 **YOUR PERSONALITY:**
 - Conversational and natural - talk like a real person, not a robot
@@ -637,6 +917,436 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
   }
 });
 
+// Transaction Analysis and Insights Generation
+app.post('/api/transactions/analyze', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Get user's Plaid access tokens
+    const plaidItemsResult = await pool.query(
+      'SELECT access_token, item_id FROM plaid_items WHERE user_id = $1',
+      [userId]
+    );
+
+    if (plaidItemsResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No connected accounts found' });
+    }
+
+    let allTransactions = [];
+    let allAccounts = [];
+
+    // Fetch transactions from all connected accounts
+    for (const item of plaidItemsResult.rows) {
+      try {
+        // Get accounts
+        const accountsResponse = await plaidClient.accountsGet({
+          access_token: item.access_token,
+        });
+        allAccounts.push(...accountsResponse.data.accounts);
+
+        // Get transactions (last 90 days)
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 90);
+
+        const transactionsResponse = await plaidClient.transactionsGet({
+          access_token: item.access_token,
+          start_date: startDate.toISOString().split('T')[0],
+          end_date: endDate.toISOString().split('T')[0],
+          count: 500,
+        });
+
+        allTransactions.push(...transactionsResponse.data.transactions);
+      } catch (plaidError) {
+        console.error('Plaid API error for item:', item.item_id, plaidError);
+        continue;
+      }
+    }
+
+    // Store transactions in database
+    for (const transaction of allTransactions) {
+      try {
+        await pool.query(`
+          INSERT INTO transactions (
+            user_id, plaid_transaction_id, account_id, amount, description,
+            category, subcategory, date, merchant_name
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (plaid_transaction_id) DO UPDATE SET
+            amount = EXCLUDED.amount,
+            description = EXCLUDED.description,
+            updated_at = NOW()
+        `, [
+          userId,
+          transaction.transaction_id,
+          transaction.account_id,
+          transaction.amount,
+          transaction.name,
+          transaction.category,
+          transaction.category[1] || transaction.category[0],
+          transaction.date,
+          transaction.merchant_name
+        ]);
+      } catch (dbError) {
+        console.error('Database insert error:', dbError);
+        continue;
+      }
+    }
+
+    // Generate spending patterns
+    await generateSpendingPatterns(userId);
+    
+    // Generate AI insights
+    await generateAIInsights(userId);
+    
+    // Generate dynamic goals
+    await generateDynamicGoals(userId);
+
+    res.json({
+      success: true,
+      message: 'Transaction analysis completed',
+      transactions_processed: allTransactions.length,
+      accounts_analyzed: allAccounts.length
+    });
+
+  } catch (error) {
+    console.error('Transaction analysis error:', error);
+    res.status(500).json({ error: 'Transaction analysis failed' });
+  }
+});
+
+// Generate spending patterns from transactions
+async function generateSpendingPatterns(userId) {
+  try {
+    // Get monthly spending by category
+    const result = await pool.query(`
+      SELECT 
+        category[1] as category,
+        DATE_TRUNC('month', date) as month,
+        SUM(ABS(amount)) as total_amount,
+        COUNT(*) as transaction_count,
+        AVG(ABS(amount)) as average_transaction
+      FROM transactions 
+      WHERE user_id = $1 AND amount < 0 AND date >= NOW() - INTERVAL '6 months'
+      GROUP BY category[1], DATE_TRUNC('month', date)
+      ORDER BY month DESC, total_amount DESC
+    `, [userId]);
+
+    // Calculate trends and store patterns
+    const categoryData = {};
+    
+    for (const row of result.rows) {
+      const category = row.category || 'Other';
+      if (!categoryData[category]) {
+        categoryData[category] = [];
+      }
+      categoryData[category].push({
+        month: row.month,
+        total: parseFloat(row.total_amount),
+        count: parseInt(row.transaction_count),
+        average: parseFloat(row.average_transaction)
+      });
+    }
+
+    // Store patterns with trend analysis
+    for (const [category, months] of Object.entries(categoryData)) {
+      if (months.length >= 2) {
+        const latest = months[0];
+        const previous = months[1];
+        const trendPercentage = ((latest.total - previous.total) / previous.total) * 100;
+        const trendDirection = trendPercentage > 10 ? 'increasing' : 
+                              trendPercentage < -10 ? 'decreasing' : 'stable';
+
+        await pool.query(`
+          INSERT INTO spending_patterns (
+            user_id, category, period_type, period_start, period_end,
+            total_amount, transaction_count, average_transaction,
+            trend_direction, trend_percentage
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+          ON CONFLICT (user_id, category, period_start) DO UPDATE SET
+            total_amount = EXCLUDED.total_amount,
+            transaction_count = EXCLUDED.transaction_count,
+            average_transaction = EXCLUDED.average_transaction,
+            trend_direction = EXCLUDED.trend_direction,
+            trend_percentage = EXCLUDED.trend_percentage
+        `, [
+          userId, category, 'monthly', latest.month, latest.month,
+          latest.total, latest.count, latest.average,
+          trendDirection, trendPercentage
+        ]);
+      }
+    }
+  } catch (error) {
+    console.error('Error generating spending patterns:', error);
+  }
+}
+
+// Generate AI-powered insights from transaction data
+async function generateAIInsights(userId) {
+  if (!genAI) return;
+
+  try {
+    // Get recent transaction data
+    const transactionsResult = await pool.query(`
+      SELECT category, amount, description, date, merchant_name
+      FROM transactions 
+      WHERE user_id = $1 AND date >= NOW() - INTERVAL '30 days'
+      ORDER BY date DESC
+      LIMIT 100
+    `, [userId]);
+
+    // Get spending patterns
+    const patternsResult = await pool.query(`
+      SELECT category, total_amount, trend_direction, trend_percentage
+      FROM spending_patterns 
+      WHERE user_id = $1 AND period_type = 'monthly'
+      ORDER BY total_amount DESC
+      LIMIT 10
+    `, [userId]);
+
+    const transactions = transactionsResult.rows;
+    const patterns = patternsResult.rows;
+
+    if (transactions.length === 0) return;
+
+    // Create AI prompt for insights generation
+    const prompt = `Analyze this user's spending data and generate 3-5 actionable financial insights:
+
+SPENDING PATTERNS:
+${patterns.map(p => `${p.category}: $${parseFloat(p.total_amount).toFixed(2)}/month (${p.trend_direction} ${Math.abs(parseFloat(p.trend_percentage) || 0).toFixed(1)}%)`).join('\n')}
+
+RECENT TRANSACTIONS (last 30 days):
+${transactions.slice(0, 20).map(t => `${t.date}: ${t.description} - $${Math.abs(parseFloat(t.amount)).toFixed(2)} (${t.category?.[0] || 'Other'})`).join('\n')}
+
+Generate insights in this JSON format:
+[
+  {
+    "type": "spending_alert|opportunity|trend|goal_suggestion",
+    "title": "Brief title",
+    "description": "Detailed insight with specific numbers",
+    "category": "category name",
+    "amount": amount_if_relevant,
+    "confidence": 0.8,
+    "actions": ["action 1", "action 2"]
+  }
+]
+
+Focus on:
+- Unusual spending patterns
+- Opportunities to save money
+- Budget optimization suggestions
+- Goal-setting recommendations
+- Trend analysis with specific numbers`;
+
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        temperature: 0.3,
+        maxOutputTokens: 1024,
+      }
+    });
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Parse AI response and store insights
+    try {
+      const insights = JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
+      
+      for (const insight of insights) {
+        await pool.query(`
+          INSERT INTO spending_insights (
+            user_id, insight_type, title, description, category,
+            amount, confidence_score, action_items
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        `, [
+          userId,
+          insight.type,
+          insight.title,
+          insight.description,
+          insight.category,
+          insight.amount,
+          insight.confidence,
+          insight.actions
+        ]);
+      }
+    } catch (parseError) {
+      console.error('Error parsing AI insights:', parseError);
+    }
+
+  } catch (error) {
+    console.error('Error generating AI insights:', error);
+  }
+}
+
+// Generate dynamic goals based on spending patterns
+async function generateDynamicGoals(userId) {
+  if (!genAI) return;
+
+  try {
+    // Get user's spending patterns and current goals
+    const patternsResult = await pool.query(`
+      SELECT category, total_amount, trend_direction
+      FROM spending_patterns 
+      WHERE user_id = $1 AND period_type = 'monthly'
+      ORDER BY total_amount DESC
+    `, [userId]);
+
+    const existingGoalsResult = await pool.query(`
+      SELECT title, target_amount, current_amount, category
+      FROM dynamic_goals 
+      WHERE user_id = $1 AND status = 'active'
+    `, [userId]);
+
+    const patterns = patternsResult.rows;
+    const existingGoals = existingGoalsResult.rows;
+
+    if (patterns.length === 0) return;
+
+    const totalMonthlySpending = patterns.reduce((sum, p) => sum + parseFloat(p.total_amount), 0);
+
+    const prompt = `Based on this user's spending patterns, suggest 2-3 personalized financial goals:
+
+MONTHLY SPENDING PATTERNS:
+${patterns.map(p => `${p.category}: $${parseFloat(p.total_amount).toFixed(2)} (${p.trend_direction})`).join('\n')}
+
+Total Monthly Spending: $${totalMonthlySpending.toFixed(2)}
+
+EXISTING GOALS:
+${existingGoals.map(g => `${g.title}: $${parseFloat(g.current_amount).toFixed(2)}/$${parseFloat(g.target_amount).toFixed(2)}`).join('\n')}
+
+Generate goals in this JSON format:
+[
+  {
+    "type": "savings|debt_reduction|spending_optimization|emergency_fund",
+    "title": "Goal title",
+    "description": "Specific, actionable description",
+    "target_amount": amount,
+    "category": "category",
+    "priority": 1-10,
+    "target_months": 6
+  }
+]
+
+Focus on:
+- Emergency fund if not present
+- Spending reduction in high categories
+- Savings goals based on income potential
+- Debt reduction if applicable`;
+
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        temperature: 0.4,
+        maxOutputTokens: 1024,
+      }
+    });
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const text = response.text();
+
+    // Parse and store dynamic goals
+    try {
+      const goals = JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
+      
+      for (const goal of goals) {
+        const targetDate = new Date();
+        targetDate.setMonth(targetDate.getMonth() + (goal.target_months || 12));
+
+        await pool.query(`
+          INSERT INTO dynamic_goals (
+            user_id, goal_type, title, description, target_amount,
+            target_date, category, priority, ai_generated
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
+          userId,
+          goal.type,
+          goal.title,
+          goal.description,
+          goal.target_amount,
+          targetDate.toISOString().split('T')[0],
+          goal.category,
+          goal.priority,
+          true
+        ]);
+      }
+    } catch (parseError) {
+      console.error('Error parsing dynamic goals:', parseError);
+    }
+
+  } catch (error) {
+    console.error('Error generating dynamic goals:', error);
+  }
+}
+
+// Get user insights
+app.get('/api/insights', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const result = await pool.query(`
+      SELECT id, insight_type, title, description, category, amount,
+             confidence_score, action_items, is_read, created_at
+      FROM spending_insights 
+      WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY confidence_score DESC, created_at DESC
+      LIMIT 20
+    `, [userId]);
+
+    res.json({
+      success: true,
+      insights: result.rows
+    });
+  } catch (error) {
+    console.error('Get insights error:', error);
+    res.status(500).json({ error: 'Failed to get insights' });
+  }
+});
+
+// Get spending patterns
+app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const result = await pool.query(`
+      SELECT category, period_start, period_end, total_amount,
+             transaction_count, average_transaction, trend_direction, trend_percentage
+      FROM spending_patterns 
+      WHERE user_id = $1 AND period_type = 'monthly'
+      ORDER BY period_start DESC, total_amount DESC
+      LIMIT 50
+    `, [userId]);
+
+    res.json({
+      success: true,
+      patterns: result.rows
+    });
+  } catch (error) {
+    console.error('Get spending patterns error:', error);
+    res.status(500).json({ error: 'Failed to get spending patterns' });
+  }
+});
+
+// Mark insight as read
+app.post('/api/insights/:insightId/read', authenticateToken, async (req, res) => {
+  try {
+    const { insightId } = req.params;
+    const userId = req.user.userId;
+    
+    await pool.query(`
+      UPDATE spending_insights 
+      SET is_read = true 
+      WHERE id = $1 AND user_id = $2
+    `, [insightId, userId]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Mark insight as read error:', error);
+    res.status(500).json({ error: 'Failed to mark insight as read' });
+  }
+});
+
 // AI CFO Affordability Check - Enhanced endpoint
 app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
   try {
@@ -647,7 +1357,54 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
     const userResult = await pool.query('SELECT first_name FROM users WHERE id = $1', [userId]);
     const userName = (userResult.rows[0] && userResult.rows[0].first_name) || 'there';
 
-    // Mock financial analysis - in production, this would use real account data
+    // Get real spending patterns from database
+    const patternsResult = await pool.query(`
+      SELECT category, total_amount, trend_direction
+      FROM spending_patterns 
+      WHERE user_id = $1 AND period_type = 'monthly'
+      ORDER BY total_amount DESC
+    `, [userId]);
+
+    // Get current goals
+    const goalsResult = await pool.query(`
+      SELECT title, target_amount, current_amount, priority
+      FROM dynamic_goals 
+      WHERE user_id = $1 AND status = 'active'
+      ORDER BY priority DESC
+    `, [userId]);
+
+    const patterns = patternsResult.rows;
+    const goals = goalsResult.rows;
+
+    // Calculate affordability based on real data
+    const totalMonthlySpending = patterns.reduce((sum, p) => sum + parseFloat(p.total_amount), 0);
+    const categorySpending = patterns.find(p => p.category.toLowerCase().includes(category?.toLowerCase() || ''));
+    const monthlyBudgetRoom = Math.max(0, 5000 - totalMonthlySpending); // Assume 5k monthly income
+    
+    const canAfford = amount <= monthlyBudgetRoom * 0.3; // 30% of available budget
+
+    const affordabilityResponse = {
+      canAfford: canAfford,
+      encouragingMessage: canAfford
+        ? `Hey ${userName}! 🎉 Great news - you can afford this ${description || 'purchase'} of $${amount}. Based on your spending patterns, you have room in your budget.`
+        : `Hey ${userName}, this ${description || 'purchase'} of $${amount} might stretch your budget. Let me suggest some alternatives or timing adjustments.`,
+      budgetImpact: {
+        monthlySpending: totalMonthlySpending,
+        availableBudget: monthlyBudgetRoom,
+        categorySpending: categorySpending?.total_amount || 0,
+        impactOnGoals: goals.map(g => ({
+          goal: g.title,
+          delayDays: canAfford ? 0 : Math.ceil((amount / (parseFloat(g.target_amount) - parseFloat(g.current_amount))) * 30)
+        }))
+      }
+    };
+
+    res.json(affordabilityResponse);
+
+  } catch (error) {
+    console.error('Affordability check error:', error);
+    
+    // Fallback response
     const mockBudget = {
       entertainment: { budget: 400, spent: 180, remaining: 220 },
       dining: { budget: 300, spent: 245, remaining: 55 },
@@ -660,7 +1417,7 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
     const affordabilityResponse = {
       canAfford: canAfford,
       encouragingMessage: canAfford
-        ? `Hey ${userName}! 🎉 Great news - you can totally afford this ${description}! You're doing such a good job managing your money.`
+        ? `Great news - you can afford this ${description}! You're doing such a good job managing your money.`
         : `Hi ${userName}! 💙 I want to help you make the best decision here. While ${description} sounds nice, it might stretch your budget a bit thin this month.`,
       impactOnGoals: {
         emergencyFund: canAfford
@@ -694,9 +1451,6 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
     };
 
     res.json(affordabilityResponse);
-  } catch (error) {
-    console.error('AI affordability check error:', error);
-    res.status(500).json({ error: 'Affordability check failed' });
   }
 });
 
@@ -751,6 +1505,376 @@ app.post('/api/ai/spending-analysis', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('AI spending analysis error:', error);
     res.status(500).json({ error: 'Spending analysis failed' });
+  }
+});
+
+// Memory Management Endpoints
+
+// Get user memory profile
+app.get('/api/memory/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Get user memory from database
+    const memoryResult = await pool.query(
+      'SELECT memory_data FROM user_memory WHERE user_id = $1',
+      [userId]
+    );
+    
+    if (memoryResult.rows.length === 0) {
+      // Create default memory profile
+      const defaultMemory = {
+        userId: userId,
+        personalInfo: {
+          name: req.user.firstName || "User",
+          email: req.user.email
+        },
+        financialProfile: {
+          goals: [
+            {
+              name: "Emergency Fund",
+              targetAmount: 10000.0,
+              currentAmount: 8500.0,
+              targetDate: "2024-12-31",
+              priority: "high"
+            },
+            {
+              name: "Europe Trip",
+              targetAmount: 5000.0,
+              currentAmount: 2100.0,
+              targetDate: "2024-12-31",
+              priority: "medium"
+            }
+          ],
+          spendingPatterns: {
+            dining: {
+              category: "dining",
+              budgetAmount: 450.0,
+              actualAmount: 380.0,
+              trend: "increased 18% this month"
+            },
+            groceries: {
+              category: "groceries",
+              budgetAmount: 300.0,
+              actualAmount: 295.0,
+              trend: "within budget range"
+            }
+          },
+          monthlyIncome: 4500.0
+        },
+        conversationHistory: [],
+        knowledgeGraph: {
+          concepts: {},
+          relationships: [],
+          insights: []
+        },
+        preferences: {
+          communicationStyle: "friendly and encouraging",
+          currency: "CAD"
+        },
+        lastUpdated: new Date().toISOString()
+      };
+      
+      // Save default memory to database
+      await pool.query(
+        'INSERT INTO user_memory (user_id, memory_data) VALUES ($1, $2)',
+        [userId, JSON.stringify(defaultMemory)]
+      );
+      
+      return res.json(defaultMemory);
+    }
+    
+    res.json(memoryResult.rows[0].memory_data);
+  } catch (error) {
+    console.error('Memory profile fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch memory profile' });
+  }
+});
+
+// Update user memory profile
+app.post('/api/memory/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const memoryData = req.body;
+    
+    // Update memory in database
+    await pool.query(
+      `INSERT INTO user_memory (user_id, memory_data, updated_at) 
+       VALUES ($1, $2, NOW()) 
+       ON CONFLICT (user_id) 
+       DO UPDATE SET memory_data = $2, updated_at = NOW()`,
+      [userId, JSON.stringify(memoryData)]
+    );
+    
+    res.json({ success: true, message: 'Memory profile updated' });
+  } catch (error) {
+    console.error('Memory profile update error:', error);
+    res.status(500).json({ error: 'Failed to update memory profile' });
+  }
+});
+
+// Add conversation message
+app.post('/api/memory/message', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sessionId, message, isFromUser, topics = [], entities = [] } = req.body;
+    
+    // Ensure session exists
+    await pool.query(
+      `INSERT INTO conversation_sessions (user_id, session_id, start_time) 
+       VALUES ($1, $2, NOW()) 
+       ON CONFLICT (user_id, session_id) DO NOTHING`,
+      [userId, sessionId]
+    );
+    
+    // Get session UUID
+    const sessionResult = await pool.query(
+      'SELECT id FROM conversation_sessions WHERE user_id = $1 AND session_id = $2',
+      [userId, sessionId]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Session not found' });
+    }
+    
+    const sessionUUID = sessionResult.rows[0].id;
+    
+    // Add message to database
+    await pool.query(
+      `INSERT INTO chat_messages (session_id, user_id, message, is_from_user, topics, entities) 
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [sessionUUID, userId, message, isFromUser, topics, entities]
+    );
+    
+    res.json({ success: true, message: 'Message added to memory' });
+  } catch (error) {
+    console.error('Memory message add error:', error);
+    res.status(500).json({ error: 'Failed to add message to memory' });
+  }
+});
+
+// Get conversation history
+app.get('/api/memory/conversations', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const limit = parseInt(req.query.limit) || 10;
+    
+    // Get recent conversations with messages
+    const conversationsResult = await pool.query(
+      `SELECT cs.session_id, cs.start_time, cs.end_time, cs.topics, cs.insights,
+              cm.message, cm.is_from_user, cm.topics as message_topics, cm.entities, cm.created_at as message_time
+       FROM conversation_sessions cs
+       LEFT JOIN chat_messages cm ON cs.id = cm.session_id
+       WHERE cs.user_id = $1
+       ORDER BY cs.start_time DESC, cm.created_at ASC
+       LIMIT $2`,
+      [userId, limit * 10] // Get more messages to account for multiple per session
+    );
+    
+    // Group messages by session
+    const sessions = {};
+    conversationsResult.rows.forEach(row => {
+      if (!sessions[row.session_id]) {
+        sessions[row.session_id] = {
+          sessionId: row.session_id,
+          startTime: row.start_time,
+          endTime: row.end_time,
+          topics: row.topics || [],
+          insights: row.insights || [],
+          messages: []
+        };
+      }
+      
+      if (row.message) {
+        sessions[row.session_id].messages.push({
+          message: row.message,
+          isFromUser: row.is_from_user,
+          topics: row.message_topics || [],
+          entities: row.entities || [],
+          timestamp: row.message_time
+        });
+      }
+    });
+    
+    res.json(Object.values(sessions).slice(0, limit));
+  } catch (error) {
+    console.error('Conversation history fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch conversation history' });
+  }
+});
+
+// Add user insight
+app.post('/api/memory/insight', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { insight, category, confidence = 0.8, evidence = [], actionable = true } = req.body;
+    
+    await pool.query(
+      `INSERT INTO user_insights (user_id, insight, category, confidence, evidence, actionable) 
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [userId, insight, category, confidence, evidence, actionable]
+    );
+    
+    res.json({ success: true, message: 'Insight added to memory' });
+  } catch (error) {
+    console.error('Memory insight add error:', error);
+    res.status(500).json({ error: 'Failed to add insight to memory' });
+  }
+});
+
+// Get user insights
+app.get('/api/memory/insights', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const category = req.query.category;
+    
+    let query = 'SELECT * FROM user_insights WHERE user_id = $1';
+    let params = [userId];
+    
+    if (category) {
+      query += ' AND category = $2';
+      params.push(category);
+    }
+    
+    query += ' ORDER BY created_at DESC LIMIT 20';
+    
+    const insightsResult = await pool.query(query, params);
+    res.json(insightsResult.rows);
+  } catch (error) {
+    console.error('Memory insights fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch insights' });
+  }
+});
+
+// Enhanced AI Chat endpoint with memory integration
+app.post('/api/ai/chat-with-memory', authenticateToken, async (req, res) => {
+  try {
+    const { message, sessionId } = req.body;
+    const userId = req.user.userId;
+    
+    if (!message || !sessionId) {
+      return res.status(400).json({ error: 'Message and sessionId are required' });
+    }
+    
+    // Get user memory profile
+    const memoryResult = await pool.query(
+      'SELECT memory_data FROM user_memory WHERE user_id = $1',
+      [userId]
+    );
+    
+    let userMemory = {};
+    if (memoryResult.rows.length > 0) {
+      userMemory = memoryResult.rows[0].memory_data;
+    }
+    
+    // Get recent conversation history
+    const conversationResult = await pool.query(
+      `SELECT cm.message, cm.is_from_user, cm.topics, cm.entities, cm.created_at
+       FROM conversation_sessions cs
+       JOIN chat_messages cm ON cs.id = cm.session_id
+       WHERE cs.user_id = $1
+       ORDER BY cm.created_at DESC
+       LIMIT 10`,
+      [userId]
+    );
+    
+    const recentMessages = conversationResult.rows.reverse(); // Chronological order
+    
+    // Get relevant insights
+    const insightsResult = await pool.query(
+      'SELECT insight, category, confidence FROM user_insights WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5',
+      [userId]
+    );
+    
+    const insights = insightsResult.rows;
+    
+    // Store user message in memory
+    await pool.query(
+      `INSERT INTO conversation_sessions (user_id, session_id, start_time) 
+       VALUES ($1, $2, NOW()) 
+       ON CONFLICT (user_id, session_id) DO NOTHING`,
+      [userId, sessionId]
+    );
+    
+    const sessionResult = await pool.query(
+      'SELECT id FROM conversation_sessions WHERE user_id = $1 AND session_id = $2',
+      [userId, sessionId]
+    );
+    
+    const sessionUUID = sessionResult.rows[0].id;
+    
+    await pool.query(
+      `INSERT INTO chat_messages (session_id, user_id, message, is_from_user, topics, entities) 
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [sessionUUID, userId, message, true, [], []]
+    );
+    
+    // Enhanced system prompt with memory context
+    const systemPrompt = `**IDENTITY AND PERSONA:**
+You are "North," the user's personal CFO who has been working with them over time. You have access to their complete financial history, conversation context, and personal insights. You know them well and can reference specific details from your relationship.
+
+**USER MEMORY PROFILE:**
+${JSON.stringify(userMemory, null, 2)}
+
+**RECENT CONVERSATION HISTORY:**
+${recentMessages.map(msg => `${msg.is_from_user ? 'User' : 'North'}: ${msg.message}`).join('\n')}
+
+**USER INSIGHTS:**
+${insights.map(insight => `• ${insight.category}: ${insight.insight} (confidence: ${insight.confidence})`).join('\n')}
+
+**YOUR RELATIONSHIP WITH THIS USER:**
+- You've been their personal CFO and have detailed knowledge of their financial journey
+- You remember their goals, spending patterns, and previous conversations
+- You can reference specific progress they've made and challenges they've faced
+- You know their preferences and communication style
+
+**CURRENT USER MESSAGE:** "${message}"
+
+**INSTRUCTIONS:** 
+Respond as their knowledgeable personal CFO who has been working with them over time. Reference their specific financial situation, goals, and previous conversations when relevant. Be warm, personal, and show that you truly know and remember them. Use their actual financial data and progress in your response.`;
+
+    // Call Gemini with enhanced context
+    if (!genAI) {
+      return res.status(503).json({
+        error: 'The AI assistant is currently unavailable. Please try again later.'
+      });
+    }
+
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: {
+        temperature: 0.7,
+        topK: 40,
+        topP: 0.95,
+        maxOutputTokens: 1024,
+      }
+    });
+    
+    const result = await model.generateContent(systemPrompt);
+    const response = await result.response;
+    const aiResponse = response.text();
+    
+    // Store AI response in memory
+    await pool.query(
+      `INSERT INTO chat_messages (session_id, user_id, message, is_from_user, topics, entities) 
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [sessionUUID, userId, aiResponse, false, [], []]
+    );
+    
+    // Extract and store insights from the conversation
+    if (message.toLowerCase().includes('goal') || message.toLowerCase().includes('save')) {
+      await pool.query(
+        `INSERT INTO user_insights (user_id, insight, category, confidence, evidence) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [userId, `User discussed goals in context: ${message}`, 'Goal Planning', 0.8, [message]]
+      );
+    }
+    
+    res.json({ response: aiResponse });
+    
+  } catch (error) {
+    console.error('AI chat with memory error:', error);
+    res.status(500).json({ error: 'AI chat with memory failed' });
   }
 });
 
@@ -982,7 +2106,7 @@ app.post('/api/cfo/chat', authenticateToken, async (req, res) => {
     console.log('=== CFO CHAT DEBUG ===');
     console.log('Request body:', JSON.stringify(req.body));
     console.log('User:', req.user);
-    
+
     const { message } = req.body;
     const userId = req.user.userId;
 
@@ -1210,13 +2334,13 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
       user: {
         client_user_id: userId
       },
-      client_name: 'North Financial',
+      client_name: 'North',
       products: ['transactions'],
       country_codes: ['US', 'CA'],
       language: 'en',
       android_package_name: 'com.north.mobile',
       // Force full institution selection experience
-      webhook: null, // No webhook for testing
+      webhook: `https://${process.env.RAILWAY_STATIC_URL || 'north-api-clean-production.up.railway.app'}/webhooks/plaid`,
       link_customization_name: null // Use default UI
     };
 
@@ -1413,13 +2537,144 @@ app.post('/api/plaid/disconnect-account', authenticateToken, async (req, res) =>
   }
 });
 
+// Get user's insights
+app.get('/api/insights', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const insights = await pool.query(`
+      SELECT 
+        id, insight_type, title, description, category, amount,
+        confidence_score, action_items, is_read, created_at
+      FROM spending_insights 
+      WHERE user_id = $1 AND (expires_at IS NULL OR expires_at > NOW())
+      ORDER BY confidence_score DESC, created_at DESC
+      LIMIT 20
+    `, [userId]);
+    
+    res.json({
+      success: true,
+      insights: insights.rows
+    });
+  } catch (error) {
+    console.error('Get insights error:', error);
+    res.status(500).json({ error: 'Failed to get insights' });
+  }
+});
+
+// Get user's dynamic goals
+app.get('/api/goals', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const goals = await pool.query(`
+      SELECT 
+        id, goal_type, title, description, target_amount, current_amount,
+        target_date, category, priority, status, created_at
+      FROM dynamic_goals 
+      WHERE user_id = $1 AND status = 'active'
+      ORDER BY priority DESC, created_at DESC
+    `, [userId]);
+    
+    res.json({
+      success: true,
+      goals: goals.rows
+    });
+  } catch (error) {
+    console.error('Get goals error:', error);
+    res.status(500).json({ error: 'Failed to get goals' });
+  }
+});
+
+// Get spending patterns
+app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const patterns = await pool.query(`
+      SELECT 
+        category, period_start, period_end, total_amount,
+        transaction_count, average_transaction, trend_direction, trend_percentage
+      FROM spending_patterns 
+      WHERE user_id = $1 AND period_type = 'monthly'
+      ORDER BY period_start DESC, total_amount DESC
+      LIMIT 50
+    `, [userId]);
+    
+    res.json({
+      success: true,
+      patterns: patterns.rows
+    });
+  } catch (error) {
+    console.error('Get spending patterns error:', error);
+    res.status(500).json({ error: 'Failed to get spending patterns' });
+  }
+});
+
+// Mark insight as read
+app.post('/api/insights/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const insightId = req.params.id;
+    
+    await pool.query(`
+      UPDATE spending_insights 
+      SET is_read = true 
+      WHERE id = $1 AND user_id = $2
+    `, [insightId, userId]);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Mark insight read error:', error);
+    res.status(500).json({ error: 'Failed to mark insight as read' });
+  }
+});
+
+// Update goal progress
+app.post('/api/goals/:id/progress', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const goalId = req.params.id;
+    const { currentAmount } = req.body;
+    
+    await pool.query(`
+      UPDATE dynamic_goals 
+      SET current_amount = $1, updated_at = NOW()
+      WHERE id = $2 AND user_id = $3
+    `, [currentAmount, goalId, userId]);
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Update goal progress error:', error);
+    res.status(500).json({ error: 'Failed to update goal progress' });
+  }
+});
+
 // Get user's transactions
 app.get('/api/transactions', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { limit = 50, offset = 0 } = req.query;
 
-    // Mock transaction data - replace with real data
+    // Get real transaction data from database
+    const transactions = await pool.query(`
+      SELECT 
+        id, plaid_transaction_id, account_id, amount, description,
+        category, subcategory, date, merchant_name, created_at
+      FROM transactions 
+      WHERE user_id = $1
+      ORDER BY date DESC, created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [userId, limit, offset]);
+
+    res.json({
+      success: true,
+      transactions: transactions.rows
+    });
+  } catch (error) {
+    console.error('Get transactions error:', error);
+    
+    // Fallback to mock data if database fails
     const transactions = [
       {
         id: 'txn_1',
@@ -1446,14 +2701,491 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
       total: transactions.length,
       hasMore: offset + limit < transactions.length
     });
-  } catch (error) {
-    console.error('Transactions fetch error:', error);
-    res.status(500).json({ error: 'Failed to fetch transactions' });
   }
 });
 
 // Initialize database and test connection on startup
 testDatabaseConnection();
+// Plaid Webhook Endpoint
+app.post('/webhooks/plaid', express.raw({ type: 'application/json' }), async (req, res) => {
+  try {
+    const webhook = req.body;
+    console.log('📨 Plaid webhook received:', {
+      webhook_type: webhook.webhook_type,
+      webhook_code: webhook.webhook_code,
+      item_id: webhook.item_id,
+      timestamp: new Date().toISOString()
+    });
+
+    // Handle different webhook types
+    switch (webhook.webhook_type) {
+      case 'TRANSACTIONS':
+        await handleTransactionsWebhook(webhook);
+        break;
+      case 'ITEM':
+        await handleItemWebhook(webhook);
+        break;
+      case 'AUTH':
+        await handleAuthWebhook(webhook);
+        break;
+      case 'IDENTITY':
+        await handleIdentityWebhook(webhook);
+        break;
+      default:
+        console.log(`⚠️ Unhandled webhook type: ${webhook.webhook_type}`);
+    }
+
+    // Always respond with 200 to acknowledge receipt
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('❌ Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// Webhook handlers
+async function handleTransactionsWebhook(webhook) {
+  console.log('💳 Processing transactions webhook:', webhook.webhook_code);
+  
+  try {
+    // Get user_id from item_id
+    const itemResult = await pool.query(
+      'SELECT user_id, access_token FROM plaid_items WHERE item_id = $1',
+      [webhook.item_id]
+    );
+    
+    if (itemResult.rows.length === 0) {
+      console.log('⚠️ No user found for item_id:', webhook.item_id);
+      return;
+    }
+    
+    const { user_id, access_token } = itemResult.rows[0];
+    
+    switch (webhook.webhook_code) {
+      case 'INITIAL_UPDATE':
+      case 'HISTORICAL_UPDATE':
+      case 'DEFAULT_UPDATE':
+        console.log('📊 Fetching transactions for user:', user_id);
+        await fetchAndStoreTransactions(user_id, access_token);
+        await generateInsightsForUser(user_id);
+        await generateDynamicGoals(user_id);
+        break;
+      case 'TRANSACTIONS_REMOVED':
+        console.log('🗑️ Handling removed transactions for item:', webhook.item_id);
+        if (webhook.removed_transactions) {
+          await removeTransactions(webhook.removed_transactions);
+        }
+        break;
+    }
+  } catch (error) {
+    console.error('❌ Error handling transactions webhook:', error);
+  }
+}
+
+async function handleItemWebhook(webhook) {
+  console.log('🏦 Processing item webhook:', webhook.webhook_code);
+  
+  switch (webhook.webhook_code) {
+    case 'ERROR':
+      console.log('❌ Item error for:', webhook.item_id, webhook.error);
+      // Handle item errors (e.g., expired credentials)
+      break;
+    case 'PENDING_EXPIRATION':
+      console.log('⏰ Item credentials expiring soon for:', webhook.item_id);
+      // Notify user to re-authenticate
+      break;
+    case 'USER_PERMISSION_REVOKED':
+      console.log('🚫 User revoked permissions for:', webhook.item_id);
+      // Handle permission revocation
+      break;
+  }
+}
+
+async function handleAuthWebhook(webhook) {
+  console.log('🔐 Processing auth webhook:', webhook.webhook_code);
+  // Handle auth-related webhooks
+}
+
+async function handleIdentityWebhook(webhook) {
+  console.log('👤 Processing identity webhook:', webhook.webhook_code);
+  // Handle identity-related webhooks
+}
+
+// Transaction Processing Functions
+async function fetchAndStoreTransactions(userId, accessToken) {
+  try {
+    console.log('🔄 Fetching transactions for user:', userId);
+    
+    // Get transactions from last 90 days
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 90);
+    const endDate = new Date();
+    
+    const transactionsRequest = {
+      access_token: accessToken,
+      start_date: startDate.toISOString().split('T')[0],
+      end_date: endDate.toISOString().split('T')[0],
+      count: 500
+    };
+    
+    const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
+    const transactions = transactionsResponse.data.transactions;
+    
+    console.log(`📊 Processing ${transactions.length} transactions`);
+    
+    // Store transactions in database
+    for (const txn of transactions) {
+      await pool.query(`
+        INSERT INTO transactions (
+          user_id, plaid_transaction_id, account_id, amount, description,
+          category, subcategory, date, merchant_name
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (plaid_transaction_id) DO UPDATE SET
+          amount = EXCLUDED.amount,
+          description = EXCLUDED.description,
+          updated_at = NOW()
+      `, [
+        userId,
+        txn.transaction_id,
+        txn.account_id,
+        -txn.amount, // Plaid uses positive for outflows, we use negative
+        txn.name,
+        txn.category || [],
+        txn.category?.[1] || null,
+        txn.date,
+        txn.merchant_name
+      ]);
+    }
+    
+    // Update spending patterns
+    await updateSpendingPatterns(userId);
+    
+    console.log('✅ Transactions stored and patterns updated');
+    
+  } catch (error) {
+    console.error('❌ Error fetching transactions:', error);
+  }
+}
+
+async function updateSpendingPatterns(userId) {
+  try {
+    // Calculate monthly spending patterns by category
+    const patterns = await pool.query(`
+      SELECT 
+        category[1] as main_category,
+        DATE_TRUNC('month', date) as month,
+        SUM(ABS(amount)) as total_amount,
+        COUNT(*) as transaction_count,
+        AVG(ABS(amount)) as average_transaction
+      FROM transactions 
+      WHERE user_id = $1 AND date >= NOW() - INTERVAL '6 months'
+      GROUP BY category[1], DATE_TRUNC('month', date)
+      ORDER BY month DESC, total_amount DESC
+    `, [userId]);
+    
+    // Store patterns and calculate trends
+    for (const pattern of patterns.rows) {
+      if (!pattern.main_category) continue;
+      
+      const monthStart = new Date(pattern.month);
+      const monthEnd = new Date(monthStart);
+      monthEnd.setMonth(monthEnd.getMonth() + 1);
+      monthEnd.setDate(0); // Last day of month
+      
+      await pool.query(`
+        INSERT INTO spending_patterns (
+          user_id, category, period_type, period_start, period_end,
+          total_amount, transaction_count, average_transaction
+        ) VALUES ($1, $2, 'monthly', $3, $4, $5, $6, $7)
+        ON CONFLICT (user_id, category, period_type, period_start) 
+        DO UPDATE SET
+          total_amount = EXCLUDED.total_amount,
+          transaction_count = EXCLUDED.transaction_count,
+          average_transaction = EXCLUDED.average_transaction,
+          created_at = NOW()
+      `, [
+        userId,
+        pattern.main_category,
+        monthStart,
+        monthEnd,
+        pattern.total_amount,
+        pattern.transaction_count,
+        pattern.average_transaction
+      ]);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error updating spending patterns:', error);
+  }
+}
+
+async function generateInsightsForUser(userId) {
+  try {
+    console.log('🧠 Generating insights for user:', userId);
+    
+    // Get recent spending data
+    const spendingData = await pool.query(`
+      SELECT 
+        category[1] as category,
+        SUM(ABS(amount)) as total_amount,
+        COUNT(*) as transaction_count,
+        AVG(ABS(amount)) as avg_amount
+      FROM transactions 
+      WHERE user_id = $1 AND date >= NOW() - INTERVAL '30 days'
+      GROUP BY category[1]
+      ORDER BY total_amount DESC
+      LIMIT 10
+    `, [userId]);
+    
+    // Generate spending pattern insights
+    for (const spending of spendingData.rows) {
+      if (!spending.category || spending.total_amount < 50) continue;
+      
+      // Check if spending increased significantly
+      const previousMonth = await pool.query(`
+        SELECT SUM(ABS(amount)) as prev_amount
+        FROM transactions 
+        WHERE user_id = $1 AND category[1] = $2 
+        AND date >= NOW() - INTERVAL '60 days' 
+        AND date < NOW() - INTERVAL '30 days'
+      `, [userId, spending.category]);
+      
+      const prevAmount = previousMonth.rows[0]?.prev_amount || 0;
+      const currentAmount = parseFloat(spending.total_amount);
+      
+      if (prevAmount > 0) {
+        const changePercent = ((currentAmount - prevAmount) / prevAmount) * 100;
+        
+        if (changePercent > 20) {
+          await createInsight(userId, {
+            type: 'spending_pattern',
+            title: `${spending.category} spending increased`,
+            description: `Your ${spending.category.toLowerCase()} spending increased by ${changePercent.toFixed(0)}% this month ($${currentAmount.toFixed(2)} vs $${prevAmount.toFixed(2)} last month).`,
+            category: spending.category,
+            amount: currentAmount,
+            confidence: 0.85,
+            actions: [
+              `Review your ${spending.category.toLowerCase()} purchases`,
+              'Set a monthly budget for this category',
+              'Look for ways to reduce spending'
+            ]
+          });
+        }
+      }
+      
+      // Generate high-spending alerts
+      if (currentAmount > 500) {
+        await createInsight(userId, {
+          type: 'budget_alert',
+          title: `High ${spending.category} spending`,
+          description: `You've spent $${currentAmount.toFixed(2)} on ${spending.category.toLowerCase()} this month across ${spending.transaction_count} transactions.`,
+          category: spending.category,
+          amount: currentAmount,
+          confidence: 0.90,
+          actions: [
+            'Consider setting a monthly budget',
+            'Track daily spending in this category',
+            'Look for subscription services to cancel'
+          ]
+        });
+      }
+    }
+    
+    // Generate saving opportunities
+    await generateSavingOpportunities(userId);
+    
+  } catch (error) {
+    console.error('❌ Error generating insights:', error);
+  }
+}
+
+async function generateSavingOpportunities(userId) {
+  try {
+    // Find recurring transactions that could be optimized
+    const recurring = await pool.query(`
+      SELECT 
+        description,
+        merchant_name,
+        AVG(ABS(amount)) as avg_amount,
+        COUNT(*) as frequency,
+        category[1] as category
+      FROM transactions 
+      WHERE user_id = $1 
+      AND date >= NOW() - INTERVAL '90 days'
+      AND ABS(amount) > 10
+      GROUP BY description, merchant_name, category[1]
+      HAVING COUNT(*) >= 3
+      ORDER BY AVG(ABS(amount)) DESC
+      LIMIT 5
+    `, [userId]);
+    
+    for (const txn of recurring.rows) {
+      const monthlyAmount = parseFloat(txn.avg_amount) * (txn.frequency / 3); // Approximate monthly
+      
+      if (monthlyAmount > 50) {
+        await createInsight(userId, {
+          type: 'saving_opportunity',
+          title: `Potential savings: ${txn.merchant_name || txn.description}`,
+          description: `You spend approximately $${monthlyAmount.toFixed(2)}/month on ${txn.merchant_name || txn.description}. Consider if this aligns with your financial goals.`,
+          category: txn.category,
+          amount: monthlyAmount,
+          confidence: 0.75,
+          actions: [
+            'Review if this expense is necessary',
+            'Look for cheaper alternatives',
+            'Consider reducing frequency'
+          ]
+        });
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ Error generating saving opportunities:', error);
+  }
+}
+
+async function createInsight(userId, insight) {
+  try {
+    // Check if similar insight already exists
+    const existing = await pool.query(`
+      SELECT id FROM spending_insights 
+      WHERE user_id = $1 AND title = $2 AND created_at > NOW() - INTERVAL '7 days'
+    `, [userId, insight.title]);
+    
+    if (existing.rows.length > 0) {
+      return; // Don't create duplicate insights
+    }
+    
+    await pool.query(`
+      INSERT INTO spending_insights (
+        user_id, insight_type, title, description, category, 
+        amount, confidence_score, action_items, expires_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    `, [
+      userId,
+      insight.type,
+      insight.title,
+      insight.description,
+      insight.category,
+      insight.amount,
+      insight.confidence,
+      insight.actions,
+      new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // Expires in 30 days
+    ]);
+    
+  } catch (error) {
+    console.error('❌ Error creating insight:', error);
+  }
+}
+
+async function generateDynamicGoals(userId) {
+  try {
+    console.log('🎯 Generating dynamic goals for user:', userId);
+    
+    // Get user's spending patterns
+    const spendingData = await pool.query(`
+      SELECT 
+        category[1] as category,
+        SUM(ABS(amount)) as total_amount,
+        COUNT(*) as transaction_count
+      FROM transactions 
+      WHERE user_id = $1 AND date >= NOW() - INTERVAL '60 days'
+      GROUP BY category[1]
+      ORDER BY total_amount DESC
+      LIMIT 5
+    `, [userId]);
+    
+    // Generate category-specific savings goals
+    for (const spending of spendingData.rows) {
+      if (!spending.category || spending.total_amount < 200) continue;
+      
+      const monthlyAmount = parseFloat(spending.total_amount) / 2; // 2 months of data
+      const savingsTarget = monthlyAmount * 0.15; // 15% reduction goal
+      
+      if (savingsTarget > 25) {
+        await createDynamicGoal(userId, {
+          type: 'spending_reduction',
+          title: `Reduce ${spending.category} spending`,
+          description: `Save $${savingsTarget.toFixed(2)} per month by reducing ${spending.category.toLowerCase()} expenses`,
+          targetAmount: savingsTarget,
+          category: spending.category,
+          targetDate: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+          priority: 7
+        });
+      }
+    }
+    
+    // Generate emergency fund goal if user doesn't have one
+    const totalMonthlySpending = await pool.query(`
+      SELECT SUM(ABS(amount)) as total
+      FROM transactions 
+      WHERE user_id = $1 AND date >= NOW() - INTERVAL '30 days'
+    `, [userId]);
+    
+    const monthlySpending = parseFloat(totalMonthlySpending.rows[0]?.total || 0);
+    if (monthlySpending > 0) {
+      const emergencyFundTarget = monthlySpending * 3; // 3 months of expenses
+      
+      await createDynamicGoal(userId, {
+        type: 'emergency_fund',
+        title: 'Build Emergency Fund',
+        description: `Build an emergency fund of $${emergencyFundTarget.toFixed(2)} to cover 3 months of expenses`,
+        targetAmount: emergencyFundTarget,
+        category: 'Savings',
+        targetDate: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+        priority: 9
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Error generating dynamic goals:', error);
+  }
+}
+
+async function createDynamicGoal(userId, goal) {
+  try {
+    // Check if similar goal already exists
+    const existing = await pool.query(`
+      SELECT id FROM dynamic_goals 
+      WHERE user_id = $1 AND goal_type = $2 AND category = $3 AND status = 'active'
+    `, [userId, goal.type, goal.category]);
+    
+    if (existing.rows.length > 0) {
+      return; // Don't create duplicate goals
+    }
+    
+    await pool.query(`
+      INSERT INTO dynamic_goals (
+        user_id, goal_type, title, description, target_amount,
+        target_date, category, priority
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [
+      userId,
+      goal.type,
+      goal.title,
+      goal.description,
+      goal.targetAmount,
+      goal.targetDate,
+      goal.category,
+      goal.priority
+    ]);
+    
+  } catch (error) {
+    console.error('❌ Error creating dynamic goal:', error);
+  }
+}
+
+async function removeTransactions(removedTransactions) {
+  try {
+    for (const txnId of removedTransactions) {
+      await pool.query('DELETE FROM transactions WHERE plaid_transaction_id = $1', [txnId]);
+    }
+    console.log(`🗑️ Removed ${removedTransactions.length} transactions`);
+  } catch (error) {
+    console.error('❌ Error removing transactions:', error);
+  }
+}
+
 initDatabase();
 
 app.listen(port, () => {

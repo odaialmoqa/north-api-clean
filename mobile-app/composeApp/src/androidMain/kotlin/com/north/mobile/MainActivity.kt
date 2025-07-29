@@ -24,7 +24,13 @@ import com.north.mobile.ui.profile.DataManagementScreen
 import com.north.mobile.ui.accounts.ConnectedAccountsScreen
 import com.north.mobile.ui.accounts.SimpleAccountConnectionScreen
 import com.north.mobile.ui.chat.SimpleChatScreen
-import com.north.mobile.ui.dashboard.DashboardScreen
+import com.north.mobile.ui.dashboard.WealthsimpleDashboard
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.draw.clip
 import com.north.mobile.ui.accounts.AccountConnectionScreen
 import com.north.mobile.ui.accounts.AccountDetailsScreen
 import com.north.mobile.ui.accounts.AccountConnectionViewModel
@@ -115,19 +121,19 @@ class MainActivity : ComponentActivity() {
 fun NorthAppTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = lightColorScheme(
-            primary = Color(0xFF2563EB), // Blue-600
-            secondary = Color(0xFF3B82F6), // Blue-500
-            tertiary = Color(0xFF60A5FA), // Blue-400
-            background = Color.White,
+            primary = Color(0xFF00D4AA), // Wealthsimple teal
+            secondary = Color(0xFF6B46C1), // Warm purple
+            tertiary = Color(0xFF10B981), // Success green
+            background = Color(0xFFF8FAFC), // Very light gray background
             surface = Color.White,
-            surfaceVariant = Color(0xFFF8FAFC), // Very light gray
+            surfaceVariant = Color(0xFFF1F5F9), // Light gray variant
             onPrimary = Color.White,
             onSecondary = Color.White,
-            onBackground = Color(0xFF0F172A), // Slate-900
-            onSurface = Color(0xFF0F172A),
-            onSurfaceVariant = Color(0xFF64748B), // Slate-500
-            outline = Color(0xFFE2E8F0), // Slate-200
-            error = Color(0xFFEF4444), // Red-500
+            onBackground = Color(0xFF1F2937), // Charcoal text
+            onSurface = Color(0xFF1F2937),
+            onSurfaceVariant = Color(0xFF6B7280), // Medium gray
+            outline = Color(0xFFE5E7EB), // Light border
+            error = Color(0xFFEF4444), // Soft red
             onError = Color.White
         ),
         content = content
@@ -201,7 +207,7 @@ fun NorthApp(onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)? = null) {
             )
         }
         composable("dashboard") {
-            DashboardScreen(
+            WealthsimpleDashboard(
                 onNavigateToChat = {
                     navController.navigate("ai_chat")
                 }

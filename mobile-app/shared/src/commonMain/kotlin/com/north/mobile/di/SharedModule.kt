@@ -12,6 +12,7 @@ import com.north.mobile.data.plaid.PlaidServiceImpl
 // import com.north.mobile.data.plaid.AccountLinkingManager
 // import com.north.mobile.data.plaid.AccountLinkingManagerImpl
 import com.north.mobile.data.plaid.PlaidEnvironment
+import com.north.mobile.config.PlaidConfig
 // import com.north.mobile.database.NorthDatabase
 // import com.russhwolf.settings.Settings
 import io.ktor.client.*
@@ -60,9 +61,9 @@ val sharedModule = module {
     single<PlaidService> { 
         PlaidServiceImpl(
             httpClient = get(),
-            clientId = "5fdecaa7df1def0013986738",
-            secret = "084141a287c71fd8f75cdc71c796b1",
-            environment = PlaidEnvironment.SANDBOX
+            clientId = PlaidConfig.CLIENT_ID,
+            secret = PlaidConfig.currentSecret,
+            environment = PlaidConfig.CURRENT_ENVIRONMENT
         )
     }
     

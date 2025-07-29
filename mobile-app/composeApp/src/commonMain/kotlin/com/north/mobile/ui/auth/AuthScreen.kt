@@ -615,97 +615,16 @@ fun AuthScreen(
 
 @Composable
 fun NorthLogo() {
-    // Enhanced North star/diamond with vibrant colors and visible background
+    // Use the proper North logo component without circular background
     Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF2563EB), // Blue-600
-                        Color(0xFF1D4ED8)  // Blue-700
-                    )
-                ),
-                shape = androidx.compose.foundation.shape.CircleShape
-            ),
+        modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize(0.7f)) {
-            val center = size.width / 2f
-            val outerStarSize = size.width * 0.4f
-            val midStarSize = size.width * 0.3f
-            val innerStarSize = size.width * 0.2f
-            
-            // Shadow layer (slightly offset)
-            val shadowPath = androidx.compose.ui.graphics.Path().apply {
-                val shadowCenter = center + 1f
-                moveTo(shadowCenter, shadowCenter - outerStarSize)
-                lineTo(shadowCenter + outerStarSize, shadowCenter)
-                lineTo(shadowCenter, shadowCenter + outerStarSize)
-                lineTo(shadowCenter - outerStarSize, shadowCenter)
-                close()
-            }
-            
-            drawPath(
-                path = shadowPath,
-                color = Color.Black.copy(alpha = 0.15f)
-            )
-            
-            // Main outer diamond - bright white
-            val outerPath = androidx.compose.ui.graphics.Path().apply {
-                moveTo(center, center - outerStarSize)
-                lineTo(center + outerStarSize, center)
-                lineTo(center, center + outerStarSize)
-                lineTo(center - outerStarSize, center)
-                close()
-            }
-            
-            drawPath(
-                path = outerPath,
-                color = Color.White
-            )
-            
-            // Middle layer with subtle gradient
-            val midPath = androidx.compose.ui.graphics.Path().apply {
-                moveTo(center, center - midStarSize)
-                lineTo(center + midStarSize, center)
-                lineTo(center, center + midStarSize)
-                lineTo(center - midStarSize, center)
-                close()
-            }
-            
-            drawPath(
-                path = midPath,
-                brush = androidx.compose.ui.graphics.Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFFF8FAFC), // Very light gray
-                        Color(0xFFE2E8F0)  // Light gray
-                    ),
-                    radius = midStarSize
-                )
-            )
-            
-            // Inner highlight diamond
-            val innerPath = androidx.compose.ui.graphics.Path().apply {
-                moveTo(center, center - innerStarSize)
-                lineTo(center + innerStarSize, center)
-                lineTo(center, center + innerStarSize)
-                lineTo(center - innerStarSize, center)
-                close()
-            }
-            
-            drawPath(
-                path = innerPath,
-                color = Color.White.copy(alpha = 0.9f)
-            )
-            
-            // Central highlight dot for extra polish
-            drawCircle(
-                color = Color.White.copy(alpha = 0.6f),
-                radius = 2f,
-                center = androidx.compose.ui.geometry.Offset(center, center)
-            )
-        }
+        com.north.mobile.ui.components.NorthLogo(
+            size = 120.dp,
+            primaryColor = Color(0xFF00D4AA),
+            secondaryColor = Color(0xFF10B981)
+        )
     }
 }
 

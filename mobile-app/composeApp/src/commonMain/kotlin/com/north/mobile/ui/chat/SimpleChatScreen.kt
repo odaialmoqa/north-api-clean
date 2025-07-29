@@ -27,12 +27,29 @@ import com.north.mobile.data.api.ApiClient
 import com.north.mobile.data.api.AuthApiService
 import com.north.mobile.data.api.FinancialApiService
 import com.north.mobile.data.repository.AuthRepository
+import com.north.mobile.ui.components.NorthLogo
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import com.north.mobile.data.ai.ContextualAIService
 
 data class ChatMessage(
     val message: String,
     val isFromUser: Boolean,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val attachments: List<ChatAttachment> = emptyList()
 )
+
+data class ChatAttachment(
+    val id: String,
+    val fileName: String,
+    val type: AttachmentType,
+    val size: Long,
+    val previewUrl: String? = null
+)
+
+enum class AttachmentType {
+    IMAGE, DOCUMENT, RECEIPT, OTHER
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,6 +60,8 @@ fun SimpleChatScreen(
     var messages by remember { mutableStateOf(listOf<ChatMessage>()) }
     var currentMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
+    var selectedAttachments by remember { mutableStateOf(listOf<ChatAttachment>()) }
+    val aiService = remember { ContextualAIService(authRepository) }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
     
@@ -50,7 +69,7 @@ fun SimpleChatScreen(
     LaunchedEffect(Unit) {
         messages = listOf(
             ChatMessage(
-                message = "👋 Hey there! I'm North and I'm so excited to help you with your finances! Think of me as that supportive friend who's always got your back when it comes to money decisions.\n\nWhat's on your mind today? I can help with budgeting, saving goals, spending decisions, or just chat about your financial dreams! 😊",
+                message = "Hey there! 👋 I'm North, your personal CFO. I'm here to help you make smart financial decisions and reach your goals.\n\nI can see you're working on some exciting goals like your Europe trip and emergency fund - that's fantastic! I'm here to help you stay on track and make the most of your money.\n\nWhat's on your mind today?",
                 isFromUser = false
             )
         )
@@ -64,7 +83,9 @@ fun SimpleChatScreen(
     }
     
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF8FAFC))
     ) {
         // Top bar
         TopAppBar(
@@ -73,35 +94,34 @@ fun SimpleChatScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(Color(0xFF10B981), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("💰", fontSize = 20.sp)
-                    }
+                    NorthLogo(size = 40.dp)
                     Column {
                         Text(
-                            "North",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold
+                            "North, Your Personal CFO",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1F2937)
                         )
                         Text(
-                            "Always here to help! 😊",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            "Your personal financial advisor",
+                            fontSize = 14.sp,
+                            color = Color(0xFF6B7280)
                         )
                     }
                 }
             },
             navigationIcon = {
                 IconButton(onClick = onBackClick) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    Icon(
+                        Icons.Default.ArrowBack, 
+                        contentDescription = "Back",
+                        tint = Color(0xFF1F2937)
+                    )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = Color.White,
+                titleContentColor = Color(0xFF1F2937)
             )
         )
         
@@ -142,10 +162,10 @@ fun SimpleChatScreen(
                 }
                 
                 val quickQuestions = listOf(
-                    "💸 Can I afford something?",
-                    "🎯 How are my goals doing?",
-                    "💡 Help me save more money",
-                    "📊 Explain my spending"
+                    "💸 \"Can I afford something?\"",
+                    "🎯 \"How are my goals doing?\"",
+                    "💡 \"Help me save more money\"",
+                    "📊 \"Explain my spending\""
                 )
                 
                 items(quickQuestions) { question ->
@@ -154,24 +174,29 @@ fun SimpleChatScreen(
                             .fillMaxWidth()
                             .clickable {
                                 currentMessage = question
-                                sendMessage(
+                                sendMessageWithAttachments(
                                     question,
+                                    emptyList(),
                                     messages,
                                     { messages = it },
                                     { isLoading = it },
                                     { currentMessage = it },
-                                    authRepository
+                                    { },
+                                    authRepository,
+                                    aiService
                                 )
                             },
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            containerColor = Color.White
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(0.dp)
                     ) {
                         Text(
                             question,
                             modifier = Modifier.padding(16.dp),
-                            fontSize = 16.sp
+                            fontSize = 14.sp,
+                            color = Color(0xFF1F2937)
                         )
                     }
                 }
@@ -181,50 +206,111 @@ fun SimpleChatScreen(
         // Input area
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
             shape = RoundedCornerShape(0.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Column(
+                modifier = Modifier.fillMaxWidth()
             ) {
-                OutlinedTextField(
-                    value = currentMessage,
-                    onValueChange = { currentMessage = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ask me anything...") },
-                    enabled = !isLoading,
-                    maxLines = 3,
-                    shape = RoundedCornerShape(24.dp)
-                )
-                
-                Button(
-                    onClick = {
-                        if (currentMessage.isNotBlank()) {
-                            sendMessage(
-                                currentMessage,
-                                messages,
-                                { messages = it },
-                                { isLoading = it },
-                                { currentMessage = it },
-                                authRepository
+                // Attachment preview
+                if (selectedAttachments.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(selectedAttachments) { attachment ->
+                            AttachmentPreview(
+                                attachment = attachment,
+                                onRemove = { 
+                                    selectedAttachments = selectedAttachments.filter { it.id != attachment.id }
+                                }
                             )
                         }
-                    },
-                    enabled = !isLoading && currentMessage.isNotBlank(),
-                    modifier = Modifier.size(48.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    shape = CircleShape
+                    }
+                }
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(bottom = 8.dp), // Extra bottom padding
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Send",
-                        modifier = Modifier.size(20.dp)
+                    OutlinedTextField(
+                        value = currentMessage,
+                        onValueChange = { currentMessage = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { 
+                            Text(
+                                "Ask me anything...",
+                                color = Color(0xFF6B7280)
+                            ) 
+                        },
+                        enabled = !isLoading,
+                        maxLines = 3,
+                        shape = RoundedCornerShape(20.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF00D4AA),
+                            unfocusedBorderColor = Color(0xFFE5E7EB),
+                            focusedTextColor = Color(0xFF1F2937),
+                            unfocusedTextColor = Color(0xFF1F2937)
+                        )
                     )
+                    
+                    // Attachment button (WhatsApp style - tight spacing)
+                    IconButton(
+                        onClick = { 
+                            selectedAttachments = selectedAttachments + ChatAttachment(
+                                id = "mock_${System.currentTimeMillis()}",
+                                fileName = "receipt.jpg",
+                                type = AttachmentType.RECEIPT,
+                                size = 1024L
+                            )
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Text(
+                            "📎",
+                            fontSize = 20.sp,
+                            color = Color(0xFF6B7280)
+                        )
+                    }
+                    
+                    Button(
+                        onClick = {
+                            if (currentMessage.isNotBlank() || selectedAttachments.isNotEmpty()) {
+                                sendMessageWithAttachments(
+                                    currentMessage,
+                                    selectedAttachments,
+                                    messages,
+                                    { messages = it },
+                                    { isLoading = it },
+                                    { currentMessage = it },
+                                    { selectedAttachments = emptyList() },
+                                    authRepository,
+                                    aiService
+                                )
+                            }
+                        },
+                        enabled = !isLoading && (currentMessage.isNotBlank() || selectedAttachments.isNotEmpty()),
+                        modifier = Modifier.size(44.dp),
+                        contentPadding = PaddingValues(0.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF00D4AA),
+                            disabledContainerColor = Color(0xFFE5E7EB)
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -234,56 +320,197 @@ fun SimpleChatScreen(
 @Composable
 fun ChatMessageBubble(message: ChatMessage) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = if (message.isFromUser) Arrangement.End else Arrangement.Start
     ) {
         if (!message.isFromUser) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(Color(0xFF10B981), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("💰", fontSize = 20.sp)
-            }
+            NorthLogo(size = 32.dp)
             Spacer(modifier = Modifier.width(8.dp))
         }
         
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = if (message.isFromUser) 
-                    MaterialTheme.colorScheme.primary 
+                    Color(0xFF00D4AA)
                 else 
-                    MaterialTheme.colorScheme.surfaceVariant
+                    Color.White
             ),
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (message.isFromUser) 16.dp else 4.dp,
-                bottomEnd = if (message.isFromUser) 4.dp else 16.dp
-            ),
-            modifier = Modifier.widthIn(max = 280.dp)
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier.widthIn(max = 280.dp),
+            elevation = CardDefaults.cardElevation(0.dp)
         ) {
-            Text(
-                text = parseMarkdown(message.message),
-                modifier = Modifier.padding(12.dp),
-                color = if (message.isFromUser) 
-                    MaterialTheme.colorScheme.onPrimary 
-                else 
-                    MaterialTheme.colorScheme.onSurface
-            )
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                // Show attachments if any
+                if (message.attachments.isNotEmpty()) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        message.attachments.forEach { attachment ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    when (attachment.type) {
+                                        AttachmentType.IMAGE, AttachmentType.RECEIPT -> "🖼️"
+                                        else -> "📄"
+                                    },
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    attachment.fileName,
+                                    fontSize = 12.sp,
+                                    color = if (message.isFromUser) Color.White.copy(alpha = 0.8f) else Color(0xFF6B7280)
+                                )
+                            }
+                        }
+                        
+                        if (message.message.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+                
+                // Show message text if not empty
+                if (message.message.isNotBlank()) {
+                    Text(
+                        text = parseMarkdown(message.message),
+                        color = if (message.isFromUser) 
+                            Color.White
+                        else 
+                            Color(0xFF1F2937),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
         }
         
         if (message.isFromUser) {
             Spacer(modifier = Modifier.width(8.dp))
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .background(MaterialTheme.colorScheme.primary, CircleShape),
+                    .size(32.dp)
+                    .background(Color(0xFF6B7280), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text("👤", fontSize = 20.sp)
+                Text(
+                    "O",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
+        }
+    }
+}
+
+@Composable
+fun AttachmentPreview(
+    attachment: ChatAttachment,
+    onRemove: () -> Unit
+) {
+    Card(
+        modifier = Modifier.width(120.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    when (attachment.type) {
+                        AttachmentType.IMAGE, AttachmentType.RECEIPT -> "🖼️"
+                        else -> "📄"
+                    },
+                    fontSize = 16.sp
+                )
+                
+                IconButton(
+                    onClick = onRemove,
+                    modifier = Modifier.size(20.dp)
+                ) {
+                    Text("×", color = Color(0xFF6B7280), fontSize = 16.sp)
+                }
+            }
+            
+            Text(
+                attachment.fileName,
+                fontSize = 12.sp,
+                color = Color(0xFF374151),
+                maxLines = 2
+            )
+            
+            Text(
+                "${attachment.size / 1024}KB",
+                fontSize = 10.sp,
+                color = Color(0xFF6B7280)
+            )
+        }
+    }
+}
+
+fun sendMessageWithAttachments(
+    message: String,
+    attachments: List<ChatAttachment>,
+    messages: List<ChatMessage>,
+    setMessages: (List<ChatMessage>) -> Unit,
+    setLoading: (Boolean) -> Unit,
+    setCurrentMessage: (String) -> Unit,
+    clearAttachments: () -> Unit,
+    authRepository: AuthRepository,
+    aiService: ContextualAIService
+) {
+    if (message.isBlank() && attachments.isEmpty()) return
+    
+    // Add user message with attachments
+    val userMessage = ChatMessage(
+        message = message.ifBlank { "Shared ${attachments.size} attachment(s)" },
+        isFromUser = true,
+        attachments = attachments
+    )
+    val updatedMessages = messages + userMessage
+    setMessages(updatedMessages)
+    setCurrentMessage("")
+    clearAttachments()
+    setLoading(true)
+    
+    // Generate contextual AI response with memory
+    kotlinx.coroutines.GlobalScope.launch {
+        try {
+            kotlinx.coroutines.delay(1000) // Faster response with memory system
+            
+            val responseMessage = aiService.generateContextualResponse(
+                userMessage = message,
+                attachments = attachments,
+                allMessages = updatedMessages
+            )
+            
+            val aiResponse = ChatMessage(
+                message = responseMessage,
+                isFromUser = false
+            )
+            
+            setMessages(updatedMessages + aiResponse)
+            setLoading(false)
+        } catch (e: Exception) {
+            println("❌ AI response error: ${e.message}")
+            val errorResponse = ChatMessage(
+                message = "I'm having trouble processing that right now. Let me try again - what would you like to discuss about your finances?",
+                isFromUser = false
+            )
+            setMessages(updatedMessages + errorResponse)
+            setLoading(false)
         }
     }
 }
@@ -294,14 +521,7 @@ fun ChatLoadingBubble() {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Start
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(Color(0xFF10B981), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("💰", fontSize = 20.sp)
-        }
+        NorthLogo(size = 32.dp)
         Spacer(modifier = Modifier.width(8.dp))
         
         Card(

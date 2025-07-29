@@ -20,7 +20,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 
 @Serializable
 data class PlaidLinkTokenRequest(
@@ -63,7 +63,7 @@ suspend fun createPlaidLinkTokenDirect(): String? {
         val request = PlaidLinkTokenRequest(
             client_id = "5fdecaa7df1def0013986738",
             secret = "084141a287c71fd8f75cdc71c796b1",
-            client_name = "North Financial",
+            client_name = "North",
             country_codes = listOf("US", "CA"),
             language = "en",
             user = PlaidUser(client_user_id = "test-user-123"),
@@ -72,7 +72,7 @@ suspend fun createPlaidLinkTokenDirect(): String? {
         
         println("Sending request to Plaid API...")
         
-        val response = client.post("https://sandbox.plaid.com/link/token/create") {
+        val response = client.post("${com.north.mobile.config.PlaidConfig.baseUrl}/link/token/create") {
             contentType(ContentType.Application.Json)
             setBody(request)
         }
@@ -105,7 +105,10 @@ suspend fun createPlaidLinkTokenDirect(): String? {
 fun PlaidLinkButton(
     onSuccess: (String) -> Unit,
     onError: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    buttonText: String = "Connect with Plaid",
+    buttonColor: Color = Color.White,
+    textColor: Color = Color(0xFF00D4AA)
 ) {
     var isConnecting by remember { mutableStateOf(false) }
     var connectionStatus by remember { mutableStateOf<String?>(null) }
@@ -177,36 +180,41 @@ fun PlaidLinkButton(
             Button(
                 onClick = {
                     isConnecting = true
-                    connectionStatus = "Initializing Plaid Link..."
+                    connectionStatus = "🔐 Creating secure link token..."
                     
                     coroutineScope.launch {
                         try {
-                            // For immediate testing, let's use a working approach
-                            // We'll simulate the Plaid Link flow and show the actual SDK interface
-                            connectionStatus = "Initializing Plaid Link..."
-                            kotlinx.coroutines.delay(500)
+                            val linkTokenResult = createLinkToken()
                             
-                            connectionStatus = "Opening Plaid Link SDK..."
-                            kotlinx.coroutines.delay(500)
-                            
-                            // Use a test link token format that the SDK can handle
-                            // In production, this would come from your backend
-                            val testLinkToken = "link-sandbox-test-token"
-                            
-                            // Launch Plaid Link SDK
-                            plaidLauncher.launchPlaidLink(
-                                linkToken = testLinkToken,
-                                onSuccess = { publicToken ->
-                                    connectionStatus = "✅ Successfully connected via Plaid!\n\n🏦 Account linked successfully\n• Public token: ${publicToken.take(20)}...\n• Ready to exchange for access token\n\n🔐 Client ID: 5fdecaa7df1def0013986738\n📱 Connected via Plaid SDK"
-                                    onSuccess(publicToken)
-                                    isConnecting = false
-                                },
-                                onError = { error ->
-                                    connectionStatus = "❌ Plaid Link failed: $error"
-                                    onError(error)
+                            if (linkTokenResult.isSuccess) {
+                                val linkToken = linkTokenResult.getOrNull()
+                                if (linkToken != null) {
+                                    connectionStatus = "🚀 Opening Plaid Link..."
+                                    
+                                    plaidLauncher.launchPlaidLink(
+                                        linkToken = linkToken,
+                                        onSuccess = { publicToken ->
+                                            connectionStatus = "✅ Successfully connected!\n\nYour bank account is now linked and ready to sync transactions."
+                                            onSuccess(publicToken)
+                                            isConnecting = false
+                                        },
+                                        onError = { error ->
+                                            connectionStatus = "❌ Connection failed: $error"
+                                            onError(error)
+                                            isConnecting = false
+                                        }
+                                    )
+                                } else {
+                                    connectionStatus = "❌ Invalid link token received"
+                                    onError("Invalid link token")
                                     isConnecting = false
                                 }
-                            )
+                            } else {
+                                val error = linkTokenResult.exceptionOrNull()?.message ?: "Unknown error"
+                                connectionStatus = "❌ Failed to create link token: $error"
+                                onError(error)
+                                isConnecting = false
+                            }
                             
                         } catch (e: Exception) {
                             connectionStatus = "❌ Connection failed: ${e.message}"
@@ -257,6 +265,43 @@ fun PlaidLinkButton(
                 )
             }
         }
+    }
+}
+
+/**
+ * Create link token from backend API
+ */
+private suspend fun createLinkToken(): Result<String> {
+    return try {
+        val client = HttpClient {
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    isLenient = true
+                })
+            }
+        }
+        
+        // Call your backend API to create the link token
+        val response = client.post("https://north-api-clean-production.up.railway.app/api/plaid/create-link-token") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                put("user_id", "north-user-${System.currentTimeMillis()}")
+            })
+        }
+        
+        if (response.status.isSuccess()) {
+            val responseBody = response.body<JsonObject>()
+            val linkToken = responseBody["link_token"]?.jsonPrimitive?.content
+                ?: throw Exception("Missing link_token in response")
+            Result.success(linkToken)
+        } else {
+            val errorBody = response.body<JsonObject>()
+            val errorMessage = errorBody["error"]?.jsonPrimitive?.content ?: "Failed to create link token"
+            Result.failure(Exception(errorMessage))
+        }
+    } catch (e: Exception) {
+        Result.failure(e)
     }
 }
 

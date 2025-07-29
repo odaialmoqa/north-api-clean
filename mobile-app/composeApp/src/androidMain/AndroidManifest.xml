@@ -7,10 +7,11 @@
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="North Finance"
+        android:label="North"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config">
         
         <activity
             android:name=".MainActivity"
@@ -23,21 +24,11 @@
             </intent-filter>
             
             <!-- Plaid OAuth redirect handling -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https"
-                      android:host="north-mobile.app"
-                      android:pathPrefix="/plaid" />
-            </intent-filter>
-            
-            <!-- Custom scheme for Plaid redirects -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="northmobile" />
+                <data android:scheme="northfinance" android:host="plaid" />
             </intent-filter>
         </activity>
 

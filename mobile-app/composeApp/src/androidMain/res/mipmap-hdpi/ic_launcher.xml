@@ -8,7 +8,7 @@
     <!-- Background circle with gradient -->
     <path
         android:pathData="M24,24m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0"
-        android:fillColor="#2563EB" />
+        android:fillColor="#00D4AA" />
     
     <!-- North star/diamond shape -->
     <path

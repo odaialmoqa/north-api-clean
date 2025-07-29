@@ -30,7 +30,7 @@ class PlaidServiceImpl(
             val requestBody = buildJsonObject {
                 put("client_id", clientId)
                 put("secret", secret)
-                put("client_name", "North - Personal Finance")
+                put("client_name", "North")
                 put("country_codes", JsonArray(listOf(JsonPrimitive("CA"))))
                 put("language", "en")
                 putJsonObject("user") {
@@ -266,7 +266,7 @@ class PlaidServiceImpl(
                 put("client_id", clientId)
                 put("secret", secret)
                 put("access_token", accessToken)
-                put("client_name", "North - Personal Finance")
+                put("client_name", "North")
                 put("country_codes", JsonArray(listOf(JsonPrimitive("CA"))))
                 put("language", "en")
                 putJsonObject("update") {

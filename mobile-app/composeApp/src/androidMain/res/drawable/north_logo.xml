@@ -14,8 +14,8 @@
                 android:centerX="16"
                 android:centerY="16"
                 android:gradientRadius="16"
-                android:startColor="#4F46E5"
-                android:endColor="#2563EB" />
+                android:startColor="#00D4AA"
+                android:endColor="#10B981" />
         </aapt:attr>
     </path>
     
