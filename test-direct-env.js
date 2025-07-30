@@ -35,7 +35,7 @@ async function testDirectEnv() {
             console.log('The issue might be in the exchange logic itself.');
             
         } catch (linkError) {
-            console.log('❌ Link token creation failed:', linkError.response?.data);
+            console.log('❌ Link token creation failed:', linkError.response && linkError.response.data);
             console.log('This confirms Plaid credentials are not loaded properly.');
         }
         

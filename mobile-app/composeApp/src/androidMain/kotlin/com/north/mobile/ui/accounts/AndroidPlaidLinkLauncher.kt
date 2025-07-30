@@ -11,6 +11,43 @@ import com.plaid.link.configuration.LinkTokenConfiguration
 import com.plaid.link.result.LinkResult
 
 /**
+ * Validate public token format for Android
+ */
+fun validateAndroidPublicTokenFormat(publicToken: String): Boolean {
+    return try {
+        // Check if token starts with "public-" and contains environment
+        if (!publicToken.startsWith("public-")) {
+            println("❌ Android Token format error: Token should start with 'public-'")
+            println("   Received token: ${publicToken.take(30)}...")
+            return false
+        }
+        
+        // Check if token contains environment (production, sandbox, development)
+        val hasEnvironment = publicToken.contains("-production-") || 
+                           publicToken.contains("-sandbox-") || 
+                           publicToken.contains("-development-")
+        
+        if (!hasEnvironment) {
+            println("❌ Android Token format error: Token should contain environment (production/sandbox/development)")
+            println("   Received token: ${publicToken.take(30)}...")
+            return false
+        }
+        
+        // Check minimum length
+        if (publicToken.length < 20) {
+            println("❌ Android Token format error: Token too short (${publicToken.length} chars)")
+            return false
+        }
+        
+        println("✅ Android Token format validation passed: ${publicToken.take(30)}...")
+        true
+    } catch (e: Exception) {
+        println("❌ Android Token format validation failed: ${e.message}")
+        false
+    }
+}
+
+/**
  * Android-specific Plaid Link launcher using the actual Plaid SDK
  */
 actual class PlaidLinkLauncher actual constructor(context: Any) {
@@ -49,9 +86,17 @@ actual class PlaidLinkLauncher actual constructor(context: Any) {
                 when (result) {
                     is LinkResult.Success -> {
                         println("✅ Plaid Link success!")
-                        println("📊 Public token: ${result.publicToken.take(20)}...")
+                        println("📊 Public token: ${result.publicToken.take(30)}...")
                         println("📊 Metadata: ${result.metadata}")
-                        onSuccess(result.publicToken)
+                        
+                        // Validate token format before calling onSuccess
+                        if (validateAndroidPublicTokenFormat(result.publicToken)) {
+                            println("✅ Token format validation passed, calling onSuccess")
+                            onSuccess(result.publicToken)
+                        } else {
+                            println("❌ Token format validation failed, calling onError")
+                            onError("Invalid token format received from Plaid SDK: ${result.publicToken.take(30)}...")
+                        }
                     }
                     is LinkResult.Exit -> {
                         println("❌ Plaid Link exit")

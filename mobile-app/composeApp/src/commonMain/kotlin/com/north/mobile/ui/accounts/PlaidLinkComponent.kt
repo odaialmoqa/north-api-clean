@@ -45,6 +45,41 @@ data class PlaidLinkTokenResponse(
 )
 
 /**
+ * Validate public token format
+ */
+fun validatePublicTokenFormat(publicToken: String): Boolean {
+    return try {
+        // Check if token starts with "public-" and contains environment
+        if (!publicToken.startsWith("public-")) {
+            println("❌ Token format error: Token should start with 'public-'")
+            return false
+        }
+        
+        // Check if token contains environment (production, sandbox, development)
+        val hasEnvironment = publicToken.contains("-production-") || 
+                           publicToken.contains("-sandbox-") || 
+                           publicToken.contains("-development-")
+        
+        if (!hasEnvironment) {
+            println("❌ Token format error: Token should contain environment (production/sandbox/development)")
+            return false
+        }
+        
+        // Check minimum length
+        if (publicToken.length < 20) {
+            println("❌ Token format error: Token too short")
+            return false
+        }
+        
+        println("✅ Token format validation passed: ${publicToken.take(20)}...")
+        true
+    } catch (e: Exception) {
+        println("❌ Token format validation failed: ${e.message}")
+        false
+    }
+}
+
+/**
  * Create a Plaid link token directly using Plaid API
  */
 suspend fun createPlaidLinkTokenDirect(): String? {
@@ -191,14 +226,32 @@ fun PlaidLinkButton(
                                 if (linkToken != null) {
                                     connectionStatus = "🚀 Opening Plaid Link..."
                                     
+                                    // Log the link token for debugging
+                                    linkToken.logPlaidToken("link")
+                                    
                                     plaidLauncher.launchPlaidLink(
                                         linkToken = linkToken,
                                         onSuccess = { publicToken ->
-                                            connectionStatus = "✅ Successfully connected!\n\nYour bank account is now linked and ready to sync transactions."
-                                            onSuccess(publicToken)
-                                            isConnecting = false
+                                            // Log the public token for debugging
+                                            publicToken.logPlaidToken("public")
+                                            
+                                            // Validate token format before proceeding
+                                            if (validatePublicTokenFormat(publicToken)) {
+                                                connectionStatus = "✅ Successfully connected!\n\nYour bank account is now linked and ready to sync transactions."
+                                                onSuccess(publicToken)
+                                                isConnecting = false
+                                            } else {
+                                                connectionStatus = "❌ Invalid token format received from Plaid"
+                                                onError("Invalid token format: Token should start with 'public-' and contain environment")
+                                                isConnecting = false
+                                            }
                                         },
                                         onError = { error ->
+                                            // Log the error for debugging
+                                            PlaidDebugger.logPlaidOperation("ERROR", mapOf(
+                                                "error" to error,
+                                                "linkToken" to linkToken.take(20)
+                                            ))
                                             connectionStatus = "❌ Connection failed: $error"
                                             onError(error)
                                             isConnecting = false
