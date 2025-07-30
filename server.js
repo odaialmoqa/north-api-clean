@@ -327,6 +327,34 @@ app.get('/debug/plaid', (req, res) => {
   });
 });
 
+// Debug endpoint for testing Plaid errors directly
+app.get('/debug/plaid-error', async (req, res) => {
+  try {
+    // Test Plaid API directly
+    const testRequest = {
+      public_token: 'access-production-test-token',
+    };
+    
+    const response = await plaidClient.itemPublicTokenExchange(testRequest);
+    res.json({ success: true, response: response.data });
+  } catch (error) {
+    res.json({
+      success: false,
+      error: {
+        message: error.message,
+        code: error.code,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        plaid_response: error.response?.data,
+        plaid_error_type: error.response?.data?.error_type,
+        plaid_error_code: error.response?.data?.error_code,
+        plaid_display_message: error.response?.data?.display_message,
+        plaid_request_id: error.response?.data?.request_id
+      }
+    });
+  }
+});
+
 // Simple Gemini test endpoint
 app.get('/test-gemini', async (req, res) => {
   try {
@@ -2461,8 +2489,22 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
       expiration: response.data.expiration
     });
   } catch (error) {
-    console.error('Create link token error:', error);
-    res.status(500).json({ error: 'Failed to create link token' });
+    console.error('❌ Create link token error:', error);
+    console.error('🔍 Link token error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      plaid_response: error.response?.data,
+      plaid_client_id_exists: !!PLAID_CLIENT_ID,
+      plaid_secret_exists: !!PLAID_SECRET,
+      plaid_env: PLAID_ENV,
+      user_id: userId
+    });
+    res.status(500).json({ 
+      error: 'Failed to create link token',
+      details: error.message,
+      plaid_configured: !!(PLAID_CLIENT_ID && PLAID_SECRET)
+    });
   }
 });
 
@@ -2673,19 +2715,33 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
       message: 'Account connected successfully. Transaction sync started in background.'
     });
   } catch (error) {
-    console.error('Exchange public token error:', error);
-    console.error('Error details:', {
+    console.error('❌ Exchange public token error:', error);
+    console.error('🔍 Detailed error analysis:', {
       message: error.message,
       code: error.code,
-      response: error.response?.data,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      plaid_response: error.response?.data,
+      plaid_error_type: error.response?.data?.error_type,
+      plaid_error_code: error.response?.data?.error_code,
+      plaid_display_message: error.response?.data?.display_message,
+      plaid_request_id: error.response?.data?.request_id,
       plaid_client_id_exists: !!PLAID_CLIENT_ID,
       plaid_secret_exists: !!PLAID_SECRET,
-      plaid_env: PLAID_ENV
+      plaid_env: PLAID_ENV,
+      public_token_preview: public_token ? `${public_token.substring(0, 20)}...` : 'MISSING',
+      user_id: userId
     });
+    
+    // Return more detailed error information
     res.status(500).json({ 
       error: 'Failed to exchange public token',
       details: error.message,
-      plaid_configured: !!(PLAID_CLIENT_ID && PLAID_SECRET)
+      plaid_configured: !!(PLAID_CLIENT_ID && PLAID_SECRET),
+      plaid_error_type: error.response?.data?.error_type,
+      plaid_error_code: error.response?.data?.error_code,
+      plaid_display_message: error.response?.data?.display_message,
+      plaid_request_id: error.response?.data?.request_id
     });
   }
 });
