@@ -25,7 +25,8 @@ const PLAID_ENV = process.env.PLAID_ENV || 'sandbox'; // sandbox, development, o
 if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
   if (process.env.NODE_ENV === 'production') {
     console.error('❌ Missing required Plaid configuration. Please set PLAID_CLIENT_ID and PLAID_SECRET in your environment variables.');
-    process.exit(1);
+    console.error('❌ Plaid features will be disabled, but server will continue running.');
+    // Don't exit in production - let server run without Plaid
   } else {
     console.warn('⚠️ Missing Plaid configuration. Plaid features will be disabled.');
   }
@@ -301,7 +302,28 @@ app.get('/debug', (req, res) => {
     jwt_secret_exists: !!process.env.JWT_SECRET,
     gemini_api_key_exists: !!process.env.GEMINI_API_KEY,
     gemini_api_key_preview: process.env.GEMINI_API_KEY ? process.env.GEMINI_API_KEY.substring(0, 20) + '...' : 'NOT SET',
-    genai_initialized: !!genAI
+    genai_initialized: !!genAI,
+    // Add Plaid debug info
+    plaid_client_id: process.env.PLAID_CLIENT_ID || 'MISSING',
+    plaid_secret_exists: !!process.env.PLAID_SECRET,
+    plaid_env: process.env.PLAID_ENV || 'NOT SET',
+    plaid_client_id_loaded: PLAID_CLIENT_ID || 'MISSING',
+    plaid_secret_loaded: !!PLAID_SECRET,
+    plaid_env_loaded: PLAID_ENV || 'NOT SET'
+  });
+});
+
+// Plaid debug endpoint
+app.get('/debug/plaid', (req, res) => {
+  res.json({
+    plaid_client_id: process.env.PLAID_CLIENT_ID || 'NOT SET',
+    plaid_client_id_length: process.env.PLAID_CLIENT_ID ? process.env.PLAID_CLIENT_ID.length : 0,
+    plaid_secret_exists: !!process.env.PLAID_SECRET,
+    plaid_secret_length: process.env.PLAID_SECRET ? process.env.PLAID_SECRET.length : 0,
+    plaid_env: process.env.PLAID_ENV || 'NOT SET',
+    plaid_client_initialized: !!plaidClient,
+    all_plaid_env_vars: Object.keys(process.env).filter(key => key.includes('PLAID')),
+    node_env: process.env.NODE_ENV
   });
 });
 
@@ -469,6 +491,93 @@ const authenticateToken = (req, res, next) => {
     next();
   });
 };
+
+// User Profile Endpoints
+
+// Get user profile
+app.get('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    const result = await pool.query(
+      'SELECT id, email, first_name, last_name FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    const user = result.rows[0];
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name
+      },
+      error: null
+    });
+    
+  } catch (error) {
+    console.error('Get profile error:', error);
+    res.status(500).json({ 
+      success: false, 
+      user: null, 
+      error: 'Failed to get user profile' 
+    });
+  }
+});
+
+// Update user profile
+app.post('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { firstName, lastName } = req.body;
+    
+    if (!firstName || !lastName) {
+      return res.status(400).json({ 
+        success: false, 
+        user: null, 
+        error: 'First name and last name are required' 
+      });
+    }
+    
+    const result = await pool.query(
+      'UPDATE users SET first_name = $1, last_name = $2 WHERE id = $3 RETURNING id, email, first_name, last_name',
+      [firstName, lastName, userId]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        user: null, 
+        error: 'User not found' 
+      });
+    }
+    
+    const user = result.rows[0];
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name
+      },
+      error: null
+    });
+    
+  } catch (error) {
+    console.error('Update profile error:', error);
+    res.status(500).json({ 
+      success: false, 
+      user: null, 
+      error: 'Failed to update user profile' 
+    });
+  }
+});
 
 // Financial Data Endpoints
 
@@ -698,7 +807,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
           ORDER BY date DESC
           LIMIT 100
         `, [userId]);
-        
+
         transactionData = transactionsResult.rows.map(txn => ({
           transaction_id: txn.plaid_transaction_id,
           account_id: txn.account_id,
@@ -718,7 +827,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
           ORDER BY confidence_score DESC, created_at DESC
           LIMIT 10
         `, [userId]);
-        
+
         insightsData = insightsResult.rows;
 
         // Get user's goals
@@ -730,7 +839,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
           ORDER BY priority DESC
           LIMIT 10
         `, [userId]);
-        
+
         goalsData = goalsResult.rows;
 
         // Get spending patterns
@@ -742,7 +851,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
           ORDER BY period_start DESC, total_amount DESC
           LIMIT 10
         `, [userId]);
-        
+
         spendingPatterns = patternsResult.rows;
 
       } catch (plaidError) {
@@ -777,40 +886,40 @@ Recent Transactions: ${transactionData.length} transactions in the last 90 days
 Total Recent Spending: $${transactionData.reduce((sum, txn) => sum + (txn.is_debit ? txn.amount : 0), 0).toFixed(2)}
 
 **SPENDING PATTERNS:**
-${spendingPatterns.map(pattern => 
-  `• ${pattern.category}: $${parseFloat(pattern.total_amount).toFixed(2)}/month (${pattern.transaction_count} transactions, trending ${pattern.trend_direction || 'stable'})`
-).join('\n')}
+${spendingPatterns.map(pattern =>
+      `• ${pattern.category}: $${parseFloat(pattern.total_amount).toFixed(2)}/month (${pattern.transaction_count} transactions, trending ${pattern.trend_direction || 'stable'})`
+    ).join('\n')}
 
 **AI-GENERATED INSIGHTS:**
-${insightsData.map(insight => 
-  `• ${insight.title}: ${insight.description} (${Math.round(parseFloat(insight.confidence_score) * 100)}% confidence)`
-).join('\n')}
+${insightsData.map(insight =>
+      `• ${insight.title}: ${insight.description} (${Math.round(parseFloat(insight.confidence_score) * 100)}% confidence)`
+    ).join('\n')}
 
 **ACTIVE GOALS:**
-${goalsData.map(goal => 
-  `• ${goal.title}: ${goal.description} (Target: $${parseFloat(goal.target_amount).toFixed(2)}, Progress: $${parseFloat(goal.current_amount).toFixed(2)})`
-).join('\n')}
+${goalsData.map(goal =>
+      `• ${goal.title}: ${goal.description} (Target: $${parseFloat(goal.target_amount).toFixed(2)}, Progress: $${parseFloat(goal.current_amount).toFixed(2)})`
+    ).join('\n')}
 
 **TOP SPENDING CATEGORIES (Last 90 days):**
 ${transactionData.reduce((acc, txn) => {
-  if (txn.is_debit) {
-    const category = txn.category[0] || 'Other';
-    acc[category] = (acc[category] || 0) + txn.amount;
-  }
-  return acc;
-}, {})
-  ? Object.entries(transactionData.reduce((acc, txn) => {
       if (txn.is_debit) {
         const category = txn.category[0] || 'Other';
         acc[category] = (acc[category] || 0) + txn.amount;
       }
       return acc;
-    }, {}))
-    .sort(([,a], [,b]) => b - a)
-    .slice(0, 5)
-    .map(([category, amount]) => `• ${category}: $${amount.toFixed(2)}`)
-    .join('\n')
-  : 'No spending data available'}
+    }, {})
+          ? Object.entries(transactionData.reduce((acc, txn) => {
+            if (txn.is_debit) {
+              const category = txn.category[0] || 'Other';
+              acc[category] = (acc[category] || 0) + txn.amount;
+            }
+            return acc;
+          }, {}))
+            .sort(([, a], [, b]) => b - a)
+            .slice(0, 5)
+            .map(([category, amount]) => `• ${category}: $${amount.toFixed(2)}`)
+            .join('\n')
+          : 'No spending data available'}
 ` : 'No bank accounts connected yet - providing general financial advice'}
 
 **YOUR ENHANCED CAPABILITIES:**
@@ -994,10 +1103,10 @@ app.post('/api/transactions/analyze', authenticateToken, async (req, res) => {
 
     // Generate spending patterns
     await generateSpendingPatterns(userId);
-    
+
     // Generate AI insights
     await generateAIInsights(userId);
-    
+
     // Generate dynamic goals
     await generateDynamicGoals(userId);
 
@@ -1033,7 +1142,7 @@ async function generateSpendingPatterns(userId) {
 
     // Calculate trends and store patterns
     const categoryData = {};
-    
+
     for (const row of result.rows) {
       const category = row.category || 'Other';
       if (!categoryData[category]) {
@@ -1053,8 +1162,8 @@ async function generateSpendingPatterns(userId) {
         const latest = months[0];
         const previous = months[1];
         const trendPercentage = ((latest.total - previous.total) / previous.total) * 100;
-        const trendDirection = trendPercentage > 10 ? 'increasing' : 
-                              trendPercentage < -10 ? 'decreasing' : 'stable';
+        const trendDirection = trendPercentage > 10 ? 'increasing' :
+          trendPercentage < -10 ? 'decreasing' : 'stable';
 
         await pool.query(`
           INSERT INTO spending_patterns (
@@ -1152,7 +1261,7 @@ Focus on:
     // Parse AI response and store insights
     try {
       const insights = JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
-      
+
       for (const insight of insights) {
         await pool.query(`
           INSERT INTO spending_insights (
@@ -1249,7 +1358,7 @@ Focus on:
     // Parse and store dynamic goals
     try {
       const goals = JSON.parse(text.replace(/```json\n?|\n?```/g, ''));
-      
+
       for (const goal of goals) {
         const targetDate = new Date();
         targetDate.setMonth(targetDate.getMonth() + (goal.target_months || 12));
@@ -1284,7 +1393,7 @@ Focus on:
 app.get('/api/insights', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     const result = await pool.query(`
       SELECT id, insight_type, title, description, category, amount,
              confidence_score, action_items, is_read, created_at
@@ -1308,7 +1417,7 @@ app.get('/api/insights', authenticateToken, async (req, res) => {
 app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     const result = await pool.query(`
       SELECT category, period_start, period_end, total_amount,
              transaction_count, average_transaction, trend_direction, trend_percentage
@@ -1333,7 +1442,7 @@ app.post('/api/insights/:insightId/read', authenticateToken, async (req, res) =>
   try {
     const { insightId } = req.params;
     const userId = req.user.userId;
-    
+
     await pool.query(`
       UPDATE spending_insights 
       SET is_read = true 
@@ -1380,7 +1489,7 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
     const totalMonthlySpending = patterns.reduce((sum, p) => sum + parseFloat(p.total_amount), 0);
     const categorySpending = patterns.find(p => p.category.toLowerCase().includes(category?.toLowerCase() || ''));
     const monthlyBudgetRoom = Math.max(0, 5000 - totalMonthlySpending); // Assume 5k monthly income
-    
+
     const canAfford = amount <= monthlyBudgetRoom * 0.3; // 30% of available budget
 
     const affordabilityResponse = {
@@ -1403,7 +1512,7 @@ app.post('/api/ai/affordability', authenticateToken, async (req, res) => {
 
   } catch (error) {
     console.error('Affordability check error:', error);
-    
+
     // Fallback response
     const mockBudget = {
       entertainment: { budget: 400, spent: 180, remaining: 220 },
@@ -1514,13 +1623,13 @@ app.post('/api/ai/spending-analysis', authenticateToken, async (req, res) => {
 app.get('/api/memory/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     // Get user memory from database
     const memoryResult = await pool.query(
       'SELECT memory_data FROM user_memory WHERE user_id = $1',
       [userId]
     );
-    
+
     if (memoryResult.rows.length === 0) {
       // Create default memory profile
       const defaultMemory = {
@@ -1574,16 +1683,16 @@ app.get('/api/memory/profile', authenticateToken, async (req, res) => {
         },
         lastUpdated: new Date().toISOString()
       };
-      
+
       // Save default memory to database
       await pool.query(
         'INSERT INTO user_memory (user_id, memory_data) VALUES ($1, $2)',
         [userId, JSON.stringify(defaultMemory)]
       );
-      
+
       return res.json(defaultMemory);
     }
-    
+
     res.json(memoryResult.rows[0].memory_data);
   } catch (error) {
     console.error('Memory profile fetch error:', error);
@@ -1596,7 +1705,7 @@ app.post('/api/memory/profile', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const memoryData = req.body;
-    
+
     // Update memory in database
     await pool.query(
       `INSERT INTO user_memory (user_id, memory_data, updated_at) 
@@ -1605,7 +1714,7 @@ app.post('/api/memory/profile', authenticateToken, async (req, res) => {
        DO UPDATE SET memory_data = $2, updated_at = NOW()`,
       [userId, JSON.stringify(memoryData)]
     );
-    
+
     res.json({ success: true, message: 'Memory profile updated' });
   } catch (error) {
     console.error('Memory profile update error:', error);
@@ -1618,7 +1727,7 @@ app.post('/api/memory/message', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { sessionId, message, isFromUser, topics = [], entities = [] } = req.body;
-    
+
     // Ensure session exists
     await pool.query(
       `INSERT INTO conversation_sessions (user_id, session_id, start_time) 
@@ -1626,26 +1735,26 @@ app.post('/api/memory/message', authenticateToken, async (req, res) => {
        ON CONFLICT (user_id, session_id) DO NOTHING`,
       [userId, sessionId]
     );
-    
+
     // Get session UUID
     const sessionResult = await pool.query(
       'SELECT id FROM conversation_sessions WHERE user_id = $1 AND session_id = $2',
       [userId, sessionId]
     );
-    
+
     if (sessionResult.rows.length === 0) {
       return res.status(400).json({ error: 'Session not found' });
     }
-    
+
     const sessionUUID = sessionResult.rows[0].id;
-    
+
     // Add message to database
     await pool.query(
       `INSERT INTO chat_messages (session_id, user_id, message, is_from_user, topics, entities) 
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [sessionUUID, userId, message, isFromUser, topics, entities]
     );
-    
+
     res.json({ success: true, message: 'Message added to memory' });
   } catch (error) {
     console.error('Memory message add error:', error);
@@ -1658,7 +1767,7 @@ app.get('/api/memory/conversations', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const limit = parseInt(req.query.limit) || 10;
-    
+
     // Get recent conversations with messages
     const conversationsResult = await pool.query(
       `SELECT cs.session_id, cs.start_time, cs.end_time, cs.topics, cs.insights,
@@ -1670,7 +1779,7 @@ app.get('/api/memory/conversations', authenticateToken, async (req, res) => {
        LIMIT $2`,
       [userId, limit * 10] // Get more messages to account for multiple per session
     );
-    
+
     // Group messages by session
     const sessions = {};
     conversationsResult.rows.forEach(row => {
@@ -1684,7 +1793,7 @@ app.get('/api/memory/conversations', authenticateToken, async (req, res) => {
           messages: []
         };
       }
-      
+
       if (row.message) {
         sessions[row.session_id].messages.push({
           message: row.message,
@@ -1695,7 +1804,7 @@ app.get('/api/memory/conversations', authenticateToken, async (req, res) => {
         });
       }
     });
-    
+
     res.json(Object.values(sessions).slice(0, limit));
   } catch (error) {
     console.error('Conversation history fetch error:', error);
@@ -1708,13 +1817,13 @@ app.post('/api/memory/insight', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const { insight, category, confidence = 0.8, evidence = [], actionable = true } = req.body;
-    
+
     await pool.query(
       `INSERT INTO user_insights (user_id, insight, category, confidence, evidence, actionable) 
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [userId, insight, category, confidence, evidence, actionable]
     );
-    
+
     res.json({ success: true, message: 'Insight added to memory' });
   } catch (error) {
     console.error('Memory insight add error:', error);
@@ -1727,17 +1836,17 @@ app.get('/api/memory/insights', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const category = req.query.category;
-    
+
     let query = 'SELECT * FROM user_insights WHERE user_id = $1';
     let params = [userId];
-    
+
     if (category) {
       query += ' AND category = $2';
       params.push(category);
     }
-    
+
     query += ' ORDER BY created_at DESC LIMIT 20';
-    
+
     const insightsResult = await pool.query(query, params);
     res.json(insightsResult.rows);
   } catch (error) {
@@ -1751,22 +1860,22 @@ app.post('/api/ai/chat-with-memory', authenticateToken, async (req, res) => {
   try {
     const { message, sessionId } = req.body;
     const userId = req.user.userId;
-    
+
     if (!message || !sessionId) {
       return res.status(400).json({ error: 'Message and sessionId are required' });
     }
-    
+
     // Get user memory profile
     const memoryResult = await pool.query(
       'SELECT memory_data FROM user_memory WHERE user_id = $1',
       [userId]
     );
-    
+
     let userMemory = {};
     if (memoryResult.rows.length > 0) {
       userMemory = memoryResult.rows[0].memory_data;
     }
-    
+
     // Get recent conversation history
     const conversationResult = await pool.query(
       `SELECT cm.message, cm.is_from_user, cm.topics, cm.entities, cm.created_at
@@ -1777,17 +1886,17 @@ app.post('/api/ai/chat-with-memory', authenticateToken, async (req, res) => {
        LIMIT 10`,
       [userId]
     );
-    
+
     const recentMessages = conversationResult.rows.reverse(); // Chronological order
-    
+
     // Get relevant insights
     const insightsResult = await pool.query(
       'SELECT insight, category, confidence FROM user_insights WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5',
       [userId]
     );
-    
+
     const insights = insightsResult.rows;
-    
+
     // Store user message in memory
     await pool.query(
       `INSERT INTO conversation_sessions (user_id, session_id, start_time) 
@@ -1795,20 +1904,20 @@ app.post('/api/ai/chat-with-memory', authenticateToken, async (req, res) => {
        ON CONFLICT (user_id, session_id) DO NOTHING`,
       [userId, sessionId]
     );
-    
+
     const sessionResult = await pool.query(
       'SELECT id FROM conversation_sessions WHERE user_id = $1 AND session_id = $2',
       [userId, sessionId]
     );
-    
+
     const sessionUUID = sessionResult.rows[0].id;
-    
+
     await pool.query(
       `INSERT INTO chat_messages (session_id, user_id, message, is_from_user, topics, entities) 
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [sessionUUID, userId, message, true, [], []]
     );
-    
+
     // Enhanced system prompt with memory context
     const systemPrompt = `**IDENTITY AND PERSONA:**
 You are "North," the user's personal CFO who has been working with them over time. You have access to their complete financial history, conversation context, and personal insights. You know them well and can reference specific details from your relationship.
@@ -1849,18 +1958,18 @@ Respond as their knowledgeable personal CFO who has been working with them over 
         maxOutputTokens: 1024,
       }
     });
-    
+
     const result = await model.generateContent(systemPrompt);
     const response = await result.response;
     const aiResponse = response.text();
-    
+
     // Store AI response in memory
     await pool.query(
       `INSERT INTO chat_messages (session_id, user_id, message, is_from_user, topics, entities) 
        VALUES ($1, $2, $3, $4, $5, $6)`,
       [sessionUUID, userId, aiResponse, false, [], []]
     );
-    
+
     // Extract and store insights from the conversation
     if (message.toLowerCase().includes('goal') || message.toLowerCase().includes('save')) {
       await pool.query(
@@ -1869,9 +1978,9 @@ Respond as their knowledgeable personal CFO who has been working with them over 
         [userId, `User discussed goals in context: ${message}`, 'Goal Planning', 0.8, [message]]
       );
     }
-    
+
     res.json({ response: aiResponse });
-    
+
   } catch (error) {
     console.error('AI chat with memory error:', error);
     res.status(500).json({ error: 'AI chat with memory failed' });
@@ -2363,6 +2472,25 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
     const { public_token } = req.body;
     const userId = req.user.userId;
 
+    // Check if Plaid is properly configured
+    if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
+      console.error('❌ Plaid not configured for token exchange');
+      console.error('PLAID_CLIENT_ID exists:', !!PLAID_CLIENT_ID);
+      console.error('PLAID_SECRET exists:', !!PLAID_SECRET);
+      console.error('PLAID_ENV:', PLAID_ENV);
+      return res.status(500).json({ 
+        error: 'Plaid integration not configured',
+        details: 'PLAID_CLIENT_ID or PLAID_SECRET missing from environment variables',
+        plaid_client_id_exists: !!PLAID_CLIENT_ID,
+        plaid_secret_exists: !!PLAID_SECRET,
+        plaid_env: PLAID_ENV
+      });
+    }
+
+    console.log('🔄 Exchanging public token:', public_token?.substring(0, 20) + '...');
+    console.log('🔧 Using Plaid environment:', PLAID_ENV);
+    console.log('🔧 Plaid client configured:', !!PLAID_CLIENT_ID);
+
     if (!public_token) {
       return res.status(400).json({ error: 'Public token is required' });
     }
@@ -2418,15 +2546,147 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
         updated_at = NOW()
     `, [userId, accessToken, itemId, accountsResponse.data.item.institution_id, institutionName]);
 
+    // Automatically sync transactions after successful connection
+    console.log('🔄 Triggering automatic transaction sync...');
+    
+    // Trigger transaction analysis in the background
+    setTimeout(async () => {
+      try {
+        console.log('📊 Starting background transaction sync for user:', userId);
+        
+        // Get transactions (last 90 days)
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 90);
+
+        const transactionsResponse = await plaidClient.transactionsGet({
+          access_token: accessToken,
+          start_date: startDate.toISOString().split('T')[0],
+          end_date: endDate.toISOString().split('T')[0],
+        });
+
+        console.log(`📈 Retrieved ${transactionsResponse.data.transactions.length} transactions`);
+
+        // Store transactions in database
+        for (const transaction of transactionsResponse.data.transactions) {
+          try {
+            await pool.query(`
+              INSERT INTO transactions (
+                user_id, plaid_transaction_id, account_id, amount, description,
+                category, subcategory, date, merchant_name
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              ON CONFLICT (plaid_transaction_id) DO NOTHING
+            `, [
+              userId,
+              transaction.transaction_id,
+              transaction.account_id,
+              transaction.amount,
+              transaction.name,
+              transaction.category,
+              transaction.category?.[1] || null,
+              transaction.date,
+              transaction.merchant_name
+            ]);
+          } catch (txnError) {
+            console.error('Error storing transaction:', txnError);
+          }
+        }
+
+        console.log('✅ Background transaction sync completed');
+        
+        // Generate AI insights after syncing
+        await generateAIInsights(userId);
+        await generateDynamicGoals(userId);
+        
+      } catch (syncError) {
+        console.error('❌ Background transaction sync failed:', syncError);
+      }
+    }, 2000); // 2 second delay to let the response complete first
+
+    // Automatically sync transactions after successful connection
+    console.log('🔄 Triggering automatic transaction sync...');
+    try {
+      // Trigger transaction analysis in the background
+      setTimeout(async () => {
+        try {
+          console.log('📊 Starting background transaction sync for user:', userId);
+          
+          // Get transactions (last 90 days)
+          const endDate = new Date();
+          const startDate = new Date();
+          startDate.setDate(startDate.getDate() - 90);
+
+          const transactionsResponse = await plaidClient.transactionsGet({
+            access_token: accessToken,
+            start_date: startDate.toISOString().split('T')[0],
+            end_date: endDate.toISOString().split('T')[0],
+          });
+
+          console.log(`📈 Retrieved ${transactionsResponse.data.transactions.length} transactions`);
+
+          // Store transactions in database
+          for (const transaction of transactionsResponse.data.transactions) {
+            try {
+              await pool.query(`
+                INSERT INTO transactions (
+                  user_id, plaid_transaction_id, account_id, amount, description,
+                  category, subcategory, date, merchant_name
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                ON CONFLICT (plaid_transaction_id) DO NOTHING
+              `, [
+                userId,
+                transaction.transaction_id,
+                transaction.account_id,
+                transaction.amount,
+                transaction.name,
+                transaction.category,
+                transaction.category?.[1] || null,
+                transaction.date,
+                transaction.merchant_name
+              ]);
+            } catch (txnError) {
+              console.error('Error storing transaction:', txnError);
+            }
+          }
+
+          console.log('✅ Background transaction sync completed');
+          
+          // Generate AI insights after syncing
+          await generateAIInsights(userId);
+          await generateDynamicGoals(userId);
+          
+        } catch (syncError) {
+          console.error('❌ Background transaction sync failed:', syncError);
+        }
+      }, 2000); // 2 second delay to let the response complete first
+      
+    } catch (bgError) {
+      console.warn('Background sync setup failed:', bgError);
+    }
+
     res.json({
       success: true,
       accounts: accounts,
       access_token: accessToken,
-      item_id: itemId
+      item_id: itemId,
+      message: 'Account connected successfully. Transaction sync started in background.',
+      message: 'Account connected successfully. Transaction sync started in background.'
     });
   } catch (error) {
     console.error('Exchange public token error:', error);
-    res.status(500).json({ error: 'Failed to exchange public token' });
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data,
+      plaid_client_id_exists: !!PLAID_CLIENT_ID,
+      plaid_secret_exists: !!PLAID_SECRET,
+      plaid_env: PLAID_ENV
+    });
+    res.status(500).json({ 
+      error: 'Failed to exchange public token',
+      details: error.message,
+      plaid_configured: !!(PLAID_CLIENT_ID && PLAID_SECRET)
+    });
   }
 });
 
@@ -2541,7 +2801,7 @@ app.post('/api/plaid/disconnect-account', authenticateToken, async (req, res) =>
 app.get('/api/insights', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     const insights = await pool.query(`
       SELECT 
         id, insight_type, title, description, category, amount,
@@ -2551,7 +2811,7 @@ app.get('/api/insights', authenticateToken, async (req, res) => {
       ORDER BY confidence_score DESC, created_at DESC
       LIMIT 20
     `, [userId]);
-    
+
     res.json({
       success: true,
       insights: insights.rows
@@ -2566,7 +2826,7 @@ app.get('/api/insights', authenticateToken, async (req, res) => {
 app.get('/api/goals', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     const goals = await pool.query(`
       SELECT 
         id, goal_type, title, description, target_amount, current_amount,
@@ -2575,7 +2835,7 @@ app.get('/api/goals', authenticateToken, async (req, res) => {
       WHERE user_id = $1 AND status = 'active'
       ORDER BY priority DESC, created_at DESC
     `, [userId]);
-    
+
     res.json({
       success: true,
       goals: goals.rows
@@ -2590,7 +2850,7 @@ app.get('/api/goals', authenticateToken, async (req, res) => {
 app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    
+
     const patterns = await pool.query(`
       SELECT 
         category, period_start, period_end, total_amount,
@@ -2600,7 +2860,7 @@ app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
       ORDER BY period_start DESC, total_amount DESC
       LIMIT 50
     `, [userId]);
-    
+
     res.json({
       success: true,
       patterns: patterns.rows
@@ -2616,13 +2876,13 @@ app.post('/api/insights/:id/read', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
     const insightId = req.params.id;
-    
+
     await pool.query(`
       UPDATE spending_insights 
       SET is_read = true 
       WHERE id = $1 AND user_id = $2
     `, [insightId, userId]);
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('Mark insight read error:', error);
@@ -2636,17 +2896,48 @@ app.post('/api/goals/:id/progress', authenticateToken, async (req, res) => {
     const userId = req.user.userId;
     const goalId = req.params.id;
     const { currentAmount } = req.body;
-    
+
     await pool.query(`
       UPDATE dynamic_goals 
       SET current_amount = $1, updated_at = NOW()
       WHERE id = $2 AND user_id = $3
     `, [currentAmount, goalId, userId]);
-    
+
     res.json({ success: true });
   } catch (error) {
     console.error('Update goal progress error:', error);
     res.status(500).json({ error: 'Failed to update goal progress' });
+  }
+});
+
+// Get transaction sync status
+app.get('/api/transactions/status', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Get transaction count and latest sync
+    const result = await pool.query(`
+      SELECT 
+        COUNT(*) as total_transactions,
+        MAX(date) as latest_transaction_date,
+        MIN(date) as earliest_transaction_date
+      FROM transactions 
+      WHERE user_id = $1
+    `, [userId]);
+    
+    const stats = result.rows[0];
+    
+    res.json({
+      success: true,
+      total_transactions: parseInt(stats.total_transactions),
+      latest_transaction_date: stats.latest_transaction_date,
+      earliest_transaction_date: stats.earliest_transaction_date,
+      sync_status: parseInt(stats.total_transactions) > 0 ? 'completed' : 'pending'
+    });
+    
+  } catch (error) {
+    console.error('Transaction status error:', error);
+    res.status(500).json({ error: 'Failed to get transaction status' });
   }
 });
 
@@ -2673,7 +2964,7 @@ app.get('/api/transactions', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Get transactions error:', error);
-    
+
     // Fallback to mock data if database fails
     const transactions = [
       {
@@ -2746,21 +3037,21 @@ app.post('/webhooks/plaid', express.raw({ type: 'application/json' }), async (re
 // Webhook handlers
 async function handleTransactionsWebhook(webhook) {
   console.log('💳 Processing transactions webhook:', webhook.webhook_code);
-  
+
   try {
     // Get user_id from item_id
     const itemResult = await pool.query(
       'SELECT user_id, access_token FROM plaid_items WHERE item_id = $1',
       [webhook.item_id]
     );
-    
+
     if (itemResult.rows.length === 0) {
       console.log('⚠️ No user found for item_id:', webhook.item_id);
       return;
     }
-    
+
     const { user_id, access_token } = itemResult.rows[0];
-    
+
     switch (webhook.webhook_code) {
       case 'INITIAL_UPDATE':
       case 'HISTORICAL_UPDATE':
@@ -2784,7 +3075,7 @@ async function handleTransactionsWebhook(webhook) {
 
 async function handleItemWebhook(webhook) {
   console.log('🏦 Processing item webhook:', webhook.webhook_code);
-  
+
   switch (webhook.webhook_code) {
     case 'ERROR':
       console.log('❌ Item error for:', webhook.item_id, webhook.error);
@@ -2815,24 +3106,24 @@ async function handleIdentityWebhook(webhook) {
 async function fetchAndStoreTransactions(userId, accessToken) {
   try {
     console.log('🔄 Fetching transactions for user:', userId);
-    
+
     // Get transactions from last 90 days
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 90);
     const endDate = new Date();
-    
+
     const transactionsRequest = {
       access_token: accessToken,
       start_date: startDate.toISOString().split('T')[0],
       end_date: endDate.toISOString().split('T')[0],
       count: 500
     };
-    
+
     const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
     const transactions = transactionsResponse.data.transactions;
-    
+
     console.log(`📊 Processing ${transactions.length} transactions`);
-    
+
     // Store transactions in database
     for (const txn of transactions) {
       await pool.query(`
@@ -2856,12 +3147,12 @@ async function fetchAndStoreTransactions(userId, accessToken) {
         txn.merchant_name
       ]);
     }
-    
+
     // Update spending patterns
     await updateSpendingPatterns(userId);
-    
+
     console.log('✅ Transactions stored and patterns updated');
-    
+
   } catch (error) {
     console.error('❌ Error fetching transactions:', error);
   }
@@ -2882,16 +3173,16 @@ async function updateSpendingPatterns(userId) {
       GROUP BY category[1], DATE_TRUNC('month', date)
       ORDER BY month DESC, total_amount DESC
     `, [userId]);
-    
+
     // Store patterns and calculate trends
     for (const pattern of patterns.rows) {
       if (!pattern.main_category) continue;
-      
+
       const monthStart = new Date(pattern.month);
       const monthEnd = new Date(monthStart);
       monthEnd.setMonth(monthEnd.getMonth() + 1);
       monthEnd.setDate(0); // Last day of month
-      
+
       await pool.query(`
         INSERT INTO spending_patterns (
           user_id, category, period_type, period_start, period_end,
@@ -2913,7 +3204,7 @@ async function updateSpendingPatterns(userId) {
         pattern.average_transaction
       ]);
     }
-    
+
   } catch (error) {
     console.error('❌ Error updating spending patterns:', error);
   }
@@ -2922,7 +3213,7 @@ async function updateSpendingPatterns(userId) {
 async function generateInsightsForUser(userId) {
   try {
     console.log('🧠 Generating insights for user:', userId);
-    
+
     // Get recent spending data
     const spendingData = await pool.query(`
       SELECT 
@@ -2936,11 +3227,11 @@ async function generateInsightsForUser(userId) {
       ORDER BY total_amount DESC
       LIMIT 10
     `, [userId]);
-    
+
     // Generate spending pattern insights
     for (const spending of spendingData.rows) {
       if (!spending.category || spending.total_amount < 50) continue;
-      
+
       // Check if spending increased significantly
       const previousMonth = await pool.query(`
         SELECT SUM(ABS(amount)) as prev_amount
@@ -2949,13 +3240,13 @@ async function generateInsightsForUser(userId) {
         AND date >= NOW() - INTERVAL '60 days' 
         AND date < NOW() - INTERVAL '30 days'
       `, [userId, spending.category]);
-      
+
       const prevAmount = previousMonth.rows[0]?.prev_amount || 0;
       const currentAmount = parseFloat(spending.total_amount);
-      
+
       if (prevAmount > 0) {
         const changePercent = ((currentAmount - prevAmount) / prevAmount) * 100;
-        
+
         if (changePercent > 20) {
           await createInsight(userId, {
             type: 'spending_pattern',
@@ -2972,7 +3263,7 @@ async function generateInsightsForUser(userId) {
           });
         }
       }
-      
+
       // Generate high-spending alerts
       if (currentAmount > 500) {
         await createInsight(userId, {
@@ -2990,10 +3281,10 @@ async function generateInsightsForUser(userId) {
         });
       }
     }
-    
+
     // Generate saving opportunities
     await generateSavingOpportunities(userId);
-    
+
   } catch (error) {
     console.error('❌ Error generating insights:', error);
   }
@@ -3018,10 +3309,10 @@ async function generateSavingOpportunities(userId) {
       ORDER BY AVG(ABS(amount)) DESC
       LIMIT 5
     `, [userId]);
-    
+
     for (const txn of recurring.rows) {
       const monthlyAmount = parseFloat(txn.avg_amount) * (txn.frequency / 3); // Approximate monthly
-      
+
       if (monthlyAmount > 50) {
         await createInsight(userId, {
           type: 'saving_opportunity',
@@ -3038,7 +3329,7 @@ async function generateSavingOpportunities(userId) {
         });
       }
     }
-    
+
   } catch (error) {
     console.error('❌ Error generating saving opportunities:', error);
   }
@@ -3051,11 +3342,11 @@ async function createInsight(userId, insight) {
       SELECT id FROM spending_insights 
       WHERE user_id = $1 AND title = $2 AND created_at > NOW() - INTERVAL '7 days'
     `, [userId, insight.title]);
-    
+
     if (existing.rows.length > 0) {
       return; // Don't create duplicate insights
     }
-    
+
     await pool.query(`
       INSERT INTO spending_insights (
         user_id, insight_type, title, description, category, 
@@ -3072,7 +3363,7 @@ async function createInsight(userId, insight) {
       insight.actions,
       new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // Expires in 30 days
     ]);
-    
+
   } catch (error) {
     console.error('❌ Error creating insight:', error);
   }
@@ -3081,7 +3372,7 @@ async function createInsight(userId, insight) {
 async function generateDynamicGoals(userId) {
   try {
     console.log('🎯 Generating dynamic goals for user:', userId);
-    
+
     // Get user's spending patterns
     const spendingData = await pool.query(`
       SELECT 
@@ -3094,14 +3385,14 @@ async function generateDynamicGoals(userId) {
       ORDER BY total_amount DESC
       LIMIT 5
     `, [userId]);
-    
+
     // Generate category-specific savings goals
     for (const spending of spendingData.rows) {
       if (!spending.category || spending.total_amount < 200) continue;
-      
+
       const monthlyAmount = parseFloat(spending.total_amount) / 2; // 2 months of data
       const savingsTarget = monthlyAmount * 0.15; // 15% reduction goal
-      
+
       if (savingsTarget > 25) {
         await createDynamicGoal(userId, {
           type: 'spending_reduction',
@@ -3114,18 +3405,18 @@ async function generateDynamicGoals(userId) {
         });
       }
     }
-    
+
     // Generate emergency fund goal if user doesn't have one
     const totalMonthlySpending = await pool.query(`
       SELECT SUM(ABS(amount)) as total
       FROM transactions 
       WHERE user_id = $1 AND date >= NOW() - INTERVAL '30 days'
     `, [userId]);
-    
+
     const monthlySpending = parseFloat(totalMonthlySpending.rows[0]?.total || 0);
     if (monthlySpending > 0) {
       const emergencyFundTarget = monthlySpending * 3; // 3 months of expenses
-      
+
       await createDynamicGoal(userId, {
         type: 'emergency_fund',
         title: 'Build Emergency Fund',
@@ -3136,7 +3427,7 @@ async function generateDynamicGoals(userId) {
         priority: 9
       });
     }
-    
+
   } catch (error) {
     console.error('❌ Error generating dynamic goals:', error);
   }
@@ -3149,11 +3440,11 @@ async function createDynamicGoal(userId, goal) {
       SELECT id FROM dynamic_goals 
       WHERE user_id = $1 AND goal_type = $2 AND category = $3 AND status = 'active'
     `, [userId, goal.type, goal.category]);
-    
+
     if (existing.rows.length > 0) {
       return; // Don't create duplicate goals
     }
-    
+
     await pool.query(`
       INSERT INTO dynamic_goals (
         user_id, goal_type, title, description, target_amount,
@@ -3169,7 +3460,7 @@ async function createDynamicGoal(userId, goal) {
       goal.category,
       goal.priority
     ]);
-    
+
   } catch (error) {
     console.error('❌ Error creating dynamic goal:', error);
   }

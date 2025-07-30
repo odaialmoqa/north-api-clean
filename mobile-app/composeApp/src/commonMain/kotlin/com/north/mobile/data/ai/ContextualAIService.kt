@@ -4,7 +4,7 @@ import com.north.mobile.ui.chat.ChatMessage
 import com.north.mobile.ui.chat.ChatAttachment
 import com.north.mobile.ui.chat.AttachmentType
 import com.north.mobile.data.repository.AuthRepository
-import com.north.mobile.data.repository.InsightsRepository
+// import com.north.mobile.data.repository.InsightsRepository
 import com.north.mobile.data.api.FinancialApiService
 import com.north.mobile.data.api.ApiClient
 
@@ -12,8 +12,7 @@ import com.north.mobile.data.api.ApiClient
  * Enhanced AI service with memory and context awareness
  */
 class ContextualAIService(
-    private val authRepository: AuthRepository? = null,
-    private val insightsRepository: InsightsRepository? = null
+    private val authRepository: AuthRepository? = null
 ) {
     private val apiClient = ApiClient()
     private val financialApiService = FinancialApiService(apiClient)
@@ -137,50 +136,8 @@ class ContextualAIService(
     }
     
     private suspend fun enrichMessageWithInsights(userMessage: String): String {
-        if (insightsRepository == null) return userMessage
-        
-        try {
-            // Get current insights and goals
-            val insights = insightsRepository.insights.value
-            val goals = insightsRepository.goals.value
-            val patterns = insightsRepository.spendingPatterns.value
-            
-            if (insights.isEmpty() && goals.isEmpty() && patterns.isEmpty()) {
-                return userMessage
-            }
-            
-            // Add context to the message
-            val contextBuilder = StringBuilder(userMessage)
-            contextBuilder.append("\n\n[CONTEXT FROM REAL DATA:")
-            
-            if (insights.isNotEmpty()) {
-                contextBuilder.append("\nRecent Insights: ")
-                insights.take(3).forEach { insight ->
-                    contextBuilder.append("${insight.title} (${insight.insight_type}); ")
-                }
-            }
-            
-            if (goals.isNotEmpty()) {
-                contextBuilder.append("\nActive Goals: ")
-                goals.take(3).forEach { goal ->
-                    contextBuilder.append("${goal.title} ${goal.progressPercentage}% complete; ")
-                }
-            }
-            
-            if (patterns.isNotEmpty()) {
-                contextBuilder.append("\nTop Spending: ")
-                patterns.take(3).forEach { pattern ->
-                    contextBuilder.append("${pattern.category} $${pattern.total_amount.toInt()}/month; ")
-                }
-            }
-            
-            contextBuilder.append("]")
-            
-            return contextBuilder.toString()
-        } catch (e: Exception) {
-            println("Error enriching message: ${e.message}")
-            return userMessage
-        }
+        // TODO: Re-enable when InsightsRepository is available
+        return userMessage
     }
     
     private fun generateEnhancedLocalResponse(userMessage: String): String {

@@ -29,6 +29,8 @@ actual class PlaidLinkLauncher actual constructor(context: Any) {
                 return
             }
             
+            println("🚀 Launching Plaid Link with token: ${linkToken.take(20)}...")
+            
             // Create Plaid Link configuration
             val config = LinkTokenConfiguration.Builder()
                 .token(linkToken)
@@ -40,22 +42,33 @@ actual class PlaidLinkLauncher actual constructor(context: Any) {
                 linkTokenConfiguration = config
             )
             
-            // Launch Plaid Link with proper result handling
-            val success = plaidHandler.open(activity)
-            
-            if (success) {
-                // The Plaid SDK will handle the UI flow
-                // For now, we'll simulate the response since proper result handling
-                // requires setting up result contracts in the Activity
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    // In production, this would be the actual public token from Plaid
-                    onSuccess("public-production-${System.currentTimeMillis()}")
-                }, 3000) // Give time for user to see the Plaid interface
-            } else {
-                onError("Failed to open Plaid Link")
+            // Launch Plaid Link with proper result handling using the modern callback API
+            plaidHandler.open(activity) { result ->
+                println("📱 Plaid Link result received: ${result.javaClass.simpleName}")
+                
+                when (result) {
+                    is LinkResult.Success -> {
+                        println("✅ Plaid Link success!")
+                        println("📊 Public token: ${result.publicToken.take(20)}...")
+                        println("📊 Metadata: ${result.metadata}")
+                        onSuccess(result.publicToken)
+                    }
+                    is LinkResult.Exit -> {
+                        println("❌ Plaid Link exit")
+                        if (result.error != null) {
+                            println("❌ Error: ${result.error}")
+                            onError("Plaid Link failed: ${result.error.displayMessage}")
+                        } else {
+                            println("ℹ️ User cancelled")
+                            onError("User cancelled bank connection")
+                        }
+                    }
+                }
             }
             
         } catch (e: Exception) {
+            println("❌ Exception launching Plaid Link: ${e.message}")
+            e.printStackTrace()
             onError("Failed to launch Plaid Link: ${e.message}")
         }
     }

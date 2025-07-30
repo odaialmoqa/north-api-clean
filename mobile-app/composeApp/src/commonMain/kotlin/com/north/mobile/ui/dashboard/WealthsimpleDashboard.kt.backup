@@ -28,9 +28,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -232,72 +229,25 @@ fun BankConnectionCard(
                         isConnecting = true
                         connectionError = null
                         
-                        // Use the provided Plaid launcher function
+                        // First get link token from backend
                         coroutineScope.launch {
                             try {
-                                // Create API client and Plaid service
-                                val apiClient = com.north.mobile.data.api.ApiClient()
-                                val plaidService = com.north.mobile.data.api.PlaidApiService(apiClient)
+                                // TODO: Replace with actual API call to get link token
+                                val linkToken = "link-sandbox-12345" // This should come from your backend
                                 
-                                // Get link token from backend
-                                val linkTokenResult = plaidService.createLinkToken()
-                                
-                                if (linkTokenResult.isFailure) {
-                                    throw Exception("Failed to get link token: ${linkTokenResult.exceptionOrNull()?.message}")
-                                }
-                                
-                                val linkToken = linkTokenResult.getOrThrow().link_token
-                                println("🔗 Got link token: ${linkToken.take(20)}...")
-                                
-                                // Launch Plaid using the provided launcher
                                 onLaunchPlaidLink(linkToken) { publicToken ->
-                                    coroutineScope.launch {
-                                        if (publicToken != null) {
-                                            println("✅ Plaid connection successful: ${publicToken.take(20)}...")
-                                            
-                                            try {
-                                                // Get auth token from session manager
-                                                val sessionManager = com.north.mobile.data.auth.SessionManagerImpl()
-                                                val authToken = sessionManager.getAuthToken()
-                                                
-                                                if (authToken != null) {
-                                                    println("🔄 Exchanging public token with backend...")
-                                                    
-                                                    // Exchange public token using the proper service
-                                                    val exchangeResult = plaidService.exchangePublicToken(publicToken, authToken)
-                                                    
-                                                    if (exchangeResult.isSuccess) {
-                                                        val exchangeResponse = exchangeResult.getOrThrow()
-                                                        if (exchangeResponse.success) {
-                                                            println("✅ Token exchange successful: ${exchangeResponse.accounts.size} accounts connected")
-                                                            onAccountConnected()
-                                                        } else {
-                                                            println("❌ Token exchange failed: Exchange response indicated failure")
-                                                            connectionError = "Failed to save account connection"
-                                                        }
-                                                    } else {
-                                                        val error = exchangeResult.exceptionOrNull()
-                                                        println("❌ Token exchange failed: ${error?.message}")
-                                                        connectionError = "Failed to save account connection: ${error?.message}"
-                                                    }
-                                                } else {
-                                                    println("❌ No auth token available - user not logged in")
-                                                    connectionError = "Please log in to connect accounts"
-                                                }
-                                            } catch (e: Exception) {
-                                                println("❌ Error exchanging token: ${e.message}")
-                                                connectionError = "Failed to save account connection: ${e.message}"
-                                            }
-                                        } else {
-                                            println("❌ Plaid connection failed or cancelled")
-                                            connectionError = "Failed to connect to bank"
-                                        }
-                                        isConnecting = false
+                                    if (publicToken != null) {
+                                        println("✅ Plaid connection successful: $publicToken")
+                                        onAccountConnected()
+                                    } else {
+                                        println("❌ Plaid connection failed")
+                                        connectionError = "Failed to connect to bank"
                                     }
+                                    isConnecting = false
                                 }
                             } catch (e: Exception) {
                                 println("❌ Error getting link token: ${e.message}")
-                                connectionError = "Failed to initialize connection: ${e.message}"
+                                connectionError = "Failed to initialize connection"
                                 isConnecting = false
                             }
                         }
