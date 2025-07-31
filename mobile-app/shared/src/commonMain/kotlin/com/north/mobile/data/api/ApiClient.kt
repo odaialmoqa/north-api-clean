@@ -16,7 +16,8 @@ import kotlinx.serialization.json.Json
 class ApiClient {
     
     companion object {
-        const val BASE_URL = "https://north-api-clean-production.up.railway.app"
+        const val BASE_URL = "http://10.0.2.2:3000" // Use local backend for testing
+        const val RAILWAY_URL = "https://north-api-clean-production.up.railway.app"
         const val LOCAL_URL = "http://10.0.2.2:3000" // Android emulator localhost for testing
     }
     
