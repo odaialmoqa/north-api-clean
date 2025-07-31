@@ -328,12 +328,16 @@ fun BankConnectionCard(
 
                                             println("🔄 Testing network connectivity...")
 
-                                            // Test network connectivity first
+                                            // Test network connectivity with a simpler endpoint
                                             try {
                                                 val apiClient = com.north.mobile.data.api.ApiClient()
-                                                val testResponse: Map<String, Any> = apiClient.get("/debug/plaid", finalAuthToken)
-                                                println("✅ Network connectivity test passed")
-                                                println("Backend environment: ${testResponse["plaid_env"]}")
+                                                // Use a simpler endpoint that returns a known structure
+                                                val response = apiClient.httpClient.get("/health")
+                                                if (response.status.value == 200) {
+                                                    println("✅ Network connectivity test passed")
+                                                } else {
+                                                    throw Exception("Health check failed with status: ${response.status}")
+                                                }
                                             } catch (e: Exception) {
                                                 println("❌ Network connectivity test failed: ${e.message}")
                                                 connectionError = "Network error: Cannot reach backend server"
