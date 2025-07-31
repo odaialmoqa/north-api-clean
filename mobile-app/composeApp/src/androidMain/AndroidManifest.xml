@@ -10,7 +10,7 @@
         android:label="North"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
-        android:usesCleartextTraffic="false"
+        android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
         
         <activity
@@ -38,7 +38,8 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:theme="@android:style/Theme.Material.Light.NoActionBar"
-            android:screenOrientation="portrait" />
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
     </application>
 

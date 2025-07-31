@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <domain-config cleartextTrafficPermitted="false">
+    <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">api.plaid.com</domain>
         <domain includeSubdomains="true">production.plaid.com</domain>
         <domain includeSubdomains="true">sandbox.plaid.com</domain>
-        <!-- Add your backend domain here -->
-        <domain includeSubdomains="true">your-backend-domain.railway.app</domain>
+        <domain includeSubdomains="true">north-api-clean-production.up.railway.app</domain>
     </domain-config>
+    
+    <!-- Allow cleartext traffic for development -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
 </network-security-config>

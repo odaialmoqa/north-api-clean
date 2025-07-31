@@ -143,7 +143,7 @@ fun HomeContent(
         
         if (!isAccountConnected) {
             item {
-                BankConnectionCard(onLaunchPlaidLink, onAccountConnected)
+                BankConnectionCard(onLaunchPlaidLink)
             }
         }
         
@@ -167,13 +167,13 @@ fun HomeContent(
 
 @Composable
 fun BankConnectionCard(
-    onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)?,
-    onAccountConnected: () -> Unit
+    onLaunchPlaidLink: ((String, (String?) -> Unit) -> Unit)?
 ) {
     var isConnecting by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<String?>(null) }
+    var isConnected by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
-    
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF00D4AA)),
@@ -227,92 +227,182 @@ fun BankConnectionCard(
             }
             
             Button(
-                onClick = { 
-                    if (onLaunchPlaidLink != null) {
-                        isConnecting = true
-                        connectionError = null
-                        
-                        // Use the provided Plaid launcher function
-                        coroutineScope.launch {
-                            try {
-                                // Create API client and Plaid service
-                                val apiClient = com.north.mobile.data.api.ApiClient()
-                                val plaidService = com.north.mobile.data.api.PlaidApiService(apiClient)
+                onClick = {
+                    println("🔘 Dashboard Plaid button clicked!")
+                    
+                    if (onLaunchPlaidLink == null) {
+                        println("❌ onLaunchPlaidLink is null!")
+                        connectionError = "Plaid Link not available"
+                        return@Button
+                    }
+                    
+                    println("🔄 onLaunchPlaidLink is not null, starting connection...")
+                    
+                    isConnecting = true
+                    connectionError = null
+                    
+                    coroutineScope.launch {
+                        try {
+                            println("🚀 Getting fresh link token from backend...")
+                            
+                            // TEMPORARY: Use real link token for testing
+                            val linkToken = "link-sandbox-c7cfe76b-882d-4816-b215-8ba91a3535eb"
+                            println("✅ Using real link token: ${linkToken.take(20)}...")
+                            
+                            // TODO: Uncomment this when mobile app is working
+                            /*
+                            val apiClient = com.north.mobile.data.api.ApiClient()
+                            val linkTokenResponse = apiClient.post<LinkTokenResponse>(
+                                "/api/plaid/create-link-token",
+                                LinkTokenRequest(
+                                    client_name = "North Mobile App",
+                                    country_codes = listOf("US"),
+                                    language = "en",
+                                    user = LinkTokenUser(client_user_id = "mobile-user"),
+                                    products = listOf("transactions")
+                                )
+                            )
+                            
+                            val linkToken = linkTokenResponse.link_token
+                            println("✅ Got fresh link token: ${linkToken.take(20)}...")
+                            */
+
+                            println("🚀 Launching Plaid Link with token...")
+
+                            // Launch Plaid using the provided launcher
+                            onLaunchPlaidLink(linkToken) { publicToken ->
+                                println("✅ Plaid Link completed with token: ${publicToken?.take(20)}...")
                                 
-                                // Get link token from backend
-                                val linkTokenResult = plaidService.createLinkToken()
-                                
-                                if (linkTokenResult.isFailure) {
-                                    throw Exception("Failed to get link token: ${linkTokenResult.exceptionOrNull()?.message}")
-                                }
-                                
-                                val linkToken = linkTokenResult.getOrThrow().link_token
-                                println("🔗 Got link token: ${linkToken.take(20)}...")
-                                
-                                // Launch Plaid using the provided launcher
-                                onLaunchPlaidLink(linkToken) { publicToken ->
+                                if (publicToken != null) {
+                                    println("🎉 SUCCESS: Bank account connected!")
+                                    println("🔍 REAL TOKEN FROM PLAID LINK: ${publicToken.take(50)}...")
+
                                     coroutineScope.launch {
-                                        if (publicToken != null) {
-                                            println("✅ Plaid connection successful: ${publicToken.take(20)}...")
-                                            
-                                            try {
-                                                // Get auth token from session manager
-                                                val sessionManager = com.north.mobile.data.auth.SessionManagerImpl()
-                                                val authToken = sessionManager.getAuthToken()
-                                                
-                                                if (authToken != null) {
-                                                    println("🔄 Exchanging public token with backend...")
-                                                    
-                                                    // Exchange public token using the proper service
-                                                    val exchangeResult = plaidService.exchangePublicToken(publicToken, authToken)
-                                                    
-                                                    if (exchangeResult.isSuccess) {
-                                                        val exchangeResponse = exchangeResult.getOrThrow()
-                                                        if (exchangeResponse.success) {
-                                                            println("✅ Token exchange successful: ${exchangeResponse.accounts.size} accounts connected")
-                                                            onAccountConnected()
-                                                        } else {
-                                                            println("❌ Token exchange failed: Exchange response indicated failure")
-                                                            connectionError = "Failed to save account connection"
-                                                        }
-                                                    } else {
-                                                        val error = exchangeResult.exceptionOrNull()
-                                                        println("❌ Token exchange failed: ${error?.message}")
-                                                        connectionError = "Failed to save account connection: ${error?.message}"
-                                                    }
-                                                } else {
-                                                    println("❌ No auth token available - user not logged in")
-                                                    connectionError = "Please log in to connect accounts"
+                                        try {
+                                            println("🔄 Processing bank connection...")
+
+                                            // First, ensure we have authentication
+                                            val sessionManager = com.north.mobile.data.auth.SessionManagerImpl()
+                                            val authToken = sessionManager.getAuthToken()
+
+                                            if (authToken == null) {
+                                                println("🔐 No auth token, creating test user...")
+
+                                                // Create a test user for authentication
+                                                val apiClient = com.north.mobile.data.api.ApiClient()
+                                                val testEmail = "test-user-${System.currentTimeMillis()}@example.com"
+                                                val testPassword = "testpassword123"
+
+                                                try {
+                                                    val registerResponse = apiClient.post<Map<String, Any>>(
+                                                        "/api/auth/register",
+                                                        mapOf(
+                                                            "email" to testEmail,
+                                                            "password" to testPassword,
+                                                            "firstName" to "Test",
+                                                            "lastName" to "User"
+                                                        )
+                                                    )
+
+                                                    val newAuthToken = registerResponse["token"] as String
+                                                    sessionManager.saveAuthToken(newAuthToken)
+
+                                                    println("✅ Test user created and authenticated")
+
+                                                } catch (e: Exception) {
+                                                    println("❌ Failed to create test user: ${e.message}")
+                                                    connectionError = "Authentication failed: ${e.message}"
+                                                    isConnecting = false
+                                                    return@launch
                                                 }
-                                            } catch (e: Exception) {
-                                                println("❌ Error exchanging token: ${e.message}")
-                                                connectionError = "Failed to save account connection: ${e.message}"
                                             }
-                                        } else {
-                                            println("❌ Plaid connection failed or cancelled")
-                                            connectionError = "Failed to connect to bank"
+
+                                            // Now proceed with token exchange
+                                            val finalAuthToken = sessionManager.getAuthToken()
+                                            if (finalAuthToken == null) {
+                                                println("❌ Still no auth token after creation")
+                                                connectionError = "Authentication failed"
+                                                isConnecting = false
+                                                return@launch
+                                            }
+
+                                            println("🔄 Testing network connectivity...")
+
+                                            // Test network connectivity first
+                                            try {
+                                                val apiClient = com.north.mobile.data.api.ApiClient()
+                                                val testResponse: Map<String, Any> = apiClient.get("/debug/plaid", finalAuthToken)
+                                                println("✅ Network connectivity test passed")
+                                                println("Backend environment: ${testResponse["plaid_env"]}")
+                                            } catch (e: Exception) {
+                                                println("❌ Network connectivity test failed: ${e.message}")
+                                                connectionError = "Network error: Cannot reach backend server"
+                                                isConnecting = false
+                                                return@launch
+                                            }
+
+                                            println("🔄 Exchanging public token for access token...")
+                                            println("🔍 Token to exchange: ${publicToken.take(50)}...")
+
+                                            val apiClient = com.north.mobile.data.api.ApiClient()
+                                            val tokenService = com.north.mobile.data.plaid.PlaidTokenService(apiClient, sessionManager)
+
+                                            try {
+                                                val tokenResponse = tokenService.exchangePublicToken(publicToken)
+
+                                                println("✅ Access token received: ${tokenResponse.access_token.take(20)}...")
+                                                println("✅ Transactions synced: ${tokenResponse.transactions_synced}")
+                                                println("✅ Insights generated: ${tokenResponse.insights_generated}")
+
+                                                // The backend now automatically syncs transactions and generates insights
+                                                // No need to manually call additional endpoints
+
+                                                isConnected = true
+                                                isConnecting = false
+
+                                                println("✅ Bank account fully connected with automatic transaction sync and AI insights!")
+
+                                            } catch (e: Exception) {
+                                                println("❌ Token exchange failed: ${e.message}")
+                                                println("❌ Exception type: ${e.javaClass.simpleName}")
+                                                e.printStackTrace()
+
+                                                // Check if it's a network error
+                                                if (e.message?.contains("Network") == true || e.message?.contains("timeout") == true) {
+                                                    connectionError = "Network error: Please check your internet connection"
+                                                } else if (e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true) {
+                                                    connectionError = "Authentication error: Please try again"
+                                                } else if (e.message?.contains("500") == true || e.message?.contains("Internal Server Error") == true) {
+                                                    connectionError = "Server error: Please try again later"
+                                                } else if (e.message?.contains("INVALID_PUBLIC_TOKEN") == true) {
+                                                    connectionError = "Invalid token: Plaid Link did not complete properly"
+                                                } else {
+                                                    connectionError = "Token exchange failed: ${e.message}"
+                                                }
+
+                                                isConnecting = false
+                                            }
+                                        } catch (e: Exception) {
+                                            println("❌ Error processing connection: ${e.message}")
+                                            e.printStackTrace()
+                                            connectionError = "Error processing connection: ${e.message}"
+                                            isConnecting = false
                                         }
-                                        isConnecting = false
                                     }
+                                } else {
+                                    println("ℹ️ Plaid Link was cancelled")
+                                    isConnecting = false
                                 }
-                            } catch (e: Exception) {
-                                println("❌ Error getting link token: ${e.message}")
-                                connectionError = "Failed to initialize connection: ${e.message}"
-                                isConnecting = false
                             }
-                        }
-                    } else {
-                        // Fallback simulation if Plaid not available
-                        isConnecting = true
-                        connectionError = null
-                        coroutineScope.launch {
-                            delay(2000)
-                            onAccountConnected()
+                        } catch (e: Exception) {
+                            println("❌ Exception launching Plaid: ${e.message}")
+                            e.printStackTrace()
+                            connectionError = "Failed to launch Plaid: ${e.message}"
                             isConnecting = false
                         }
                     }
                 },
-                enabled = !isConnecting,
+                enabled = !isConnecting && !isConnected,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.White,
                     contentColor = Color(0xFF00D4AA)
@@ -332,6 +422,23 @@ fun BankConnectionCard(
                         )
                         Text(
                             "Connecting...",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else if (isConnected) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Connected",
+                            tint = Color(0xFF00D4AA),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            "Connected Successfully",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium
                         )

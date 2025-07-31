@@ -1,23 +1,22 @@
-// Test Real Plaid Link Flow with Sandbox Credentials
 const axios = require('axios');
 
 const BASE_URL = 'https://north-api-clean-production.up.railway.app';
 
-async function testRealPlaidFlow() {
-    console.log('🎯 TESTING REAL PLAID FLOW WITH DATABASE');
-    console.log('==========================================');
+async function testWithRealSandboxToken() {
+    console.log('🎯 TESTING WITH REAL SANDBOX TOKEN');
+    console.log('=====================================');
     
     try {
         // Step 1: Create a test user
         console.log('\n1️⃣ Creating test user...');
-        const testEmail = `real-plaid-${Date.now()}@example.com`;
+        const testEmail = `real-test-${Date.now()}@example.com`;
         const testPassword = 'testpassword123';
         
         const registerResponse = await axios.post(`${BASE_URL}/api/auth/register`, {
             email: testEmail,
             password: testPassword,
             firstName: 'Real',
-            lastName: 'Plaid'
+            lastName: 'Test'
         });
         
         const authToken = registerResponse.data.token;
@@ -26,10 +25,10 @@ async function testRealPlaidFlow() {
         // Step 2: Create a link token
         console.log('\n2️⃣ Creating link token...');
         const linkTokenResponse = await axios.post(`${BASE_URL}/api/plaid/create-link-token`, {
-            client_name: 'Real Plaid Test',
+            client_name: 'Real Test App',
             country_codes: ['US'],
             language: 'en',
-            user: { client_user_id: 'real-plaid-user' },
+            user: { client_user_id: 'real-test-user' },
             products: ['transactions']
         }, {
             headers: { Authorization: `Bearer ${authToken}` }
@@ -43,15 +42,14 @@ async function testRealPlaidFlow() {
         console.log('1. Go to your Plaid Dashboard');
         console.log('2. Navigate to "Link" section');
         console.log('3. Create a new link token with these settings:');
-        console.log('   - Client Name: "Real Plaid Test"');
+        console.log('   - Client Name: "Real Test App"');
         console.log('   - Country Codes: ["US"]');
         console.log('   - Language: "en"');
         console.log('   - Products: ["transactions"]');
-        console.log('4. Use the link token above in your mobile app');
-        console.log('5. Complete the Plaid Link flow with sandbox credentials');
-        console.log('6. Copy the public token from the mobile app logs');
+        console.log('4. Copy the generated link token');
+        console.log('5. Use it in the mobile app');
         console.log('');
-        console.log('🔧 ALTERNATIVE: Use this link token in mobile app');
+        console.log('🔧 ALTERNATIVE: Use the link token above');
         console.log('=====================================');
         console.log('Link Token:', linkToken);
         console.log('');
@@ -90,4 +88,4 @@ async function testRealPlaidFlow() {
     }
 }
 
-testRealPlaidFlow().catch(console.error); 
+testWithRealSandboxToken().catch(console.error); 

@@ -148,11 +148,25 @@ fun PlaidLinkButton(
     var isConnecting by remember { mutableStateOf(false) }
     var connectionStatus by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
-    val context = androidx.compose.ui.platform.LocalContext.current
     
-    // Create Plaid launcher
+    // Get context using platform-specific implementation
+    val context = getPlatformContext()
+    
+    // Create Plaid launcher with proper error handling
     val plaidLauncher = remember(context) {
-        PlaidLinkLauncher(context)
+        try {
+            if (context != null) {
+                println("🔧 Creating PlaidLinkLauncher with context: ${context.javaClass.simpleName}")
+                PlaidLinkLauncher(context)
+            } else {
+                println("❌ Context is null - cannot create PlaidLinkLauncher")
+                null
+            }
+        } catch (e: Exception) {
+            println("❌ Failed to create PlaidLinkLauncher: ${e.message}")
+            e.printStackTrace()
+            null
+        }
     }
     
     Card(
@@ -214,26 +228,46 @@ fun PlaidLinkButton(
             
             Button(
                 onClick = {
+                    println("🔘 Plaid button clicked")
+                    
+                    if (plaidLauncher == null) {
+                        println("❌ PlaidLauncher is null")
+                        onError("Plaid SDK not available")
+                        return@Button
+                    }
+                    
                     isConnecting = true
                     connectionStatus = "🔐 Creating secure link token..."
                     
                     coroutineScope.launch {
                         try {
+                            println("🔄 Starting link token creation...")
                             val linkTokenResult = createLinkToken()
                             
                             if (linkTokenResult.isSuccess) {
                                 val linkToken = linkTokenResult.getOrNull()
                                 if (linkToken != null) {
                                     connectionStatus = "🚀 Opening Plaid Link..."
+                                    println("✅ Link token created: ${linkToken.take(20)}...")
                                     
                                     // Log the link token for debugging
-                                    linkToken.logPlaidToken("link")
+                                    try {
+                                        linkToken.logPlaidToken("link")
+                                    } catch (e: Exception) {
+                                        println("⚠️ Failed to log token: ${e.message}")
+                                    }
                                     
+                                    println("🚀 Launching Plaid Link...")
                                     plaidLauncher.launchPlaidLink(
                                         linkToken = linkToken,
                                         onSuccess = { publicToken ->
-                                            // Log the public token for debugging
-                                            publicToken.logPlaidToken("public")
+                                            println("✅ Plaid Link success: ${publicToken.take(20)}...")
+                                            try {
+                                                // Log the public token for debugging
+                                                publicToken.logPlaidToken("public")
+                                            } catch (e: Exception) {
+                                                println("⚠️ Failed to log public token: ${e.message}")
+                                            }
                                             
                                             // Validate token format before proceeding
                                             if (validatePublicTokenFormat(publicToken)) {
@@ -247,29 +281,38 @@ fun PlaidLinkButton(
                                             }
                                         },
                                         onError = { error ->
-                                            // Log the error for debugging
-                                            PlaidDebugger.logPlaidOperation("ERROR", mapOf(
-                                                "error" to error,
-                                                "linkToken" to linkToken.take(20)
-                                            ))
+                                            println("❌ Plaid Link error: $error")
+                                            try {
+                                                // Log the error for debugging
+                                                PlaidDebugger.logPlaidOperation("ERROR", mapOf(
+                                                    "error" to error,
+                                                    "linkToken" to linkToken.take(20)
+                                                ))
+                                            } catch (e: Exception) {
+                                                println("⚠️ Failed to log error: ${e.message}")
+                                            }
                                             connectionStatus = "❌ Connection failed: $error"
                                             onError(error)
                                             isConnecting = false
                                         }
                                     )
                                 } else {
+                                    println("❌ Link token is null")
                                     connectionStatus = "❌ Invalid link token received"
                                     onError("Invalid link token")
                                     isConnecting = false
                                 }
                             } else {
                                 val error = linkTokenResult.exceptionOrNull()?.message ?: "Unknown error"
+                                println("❌ Link token creation failed: $error")
                                 connectionStatus = "❌ Failed to create link token: $error"
                                 onError(error)
                                 isConnecting = false
                             }
                             
                         } catch (e: Exception) {
+                            println("❌ Plaid connection failed: ${e.message}")
+                            e.printStackTrace()
                             connectionStatus = "❌ Connection failed: ${e.message}"
                             onError(e.message ?: "Unknown error")
                             isConnecting = false
@@ -278,7 +321,7 @@ fun PlaidLinkButton(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !isConnecting
+                enabled = !isConnecting && plaidLauncher != null
             ) {
                 if (isConnecting) {
                     Row(
@@ -322,10 +365,12 @@ fun PlaidLinkButton(
 }
 
 /**
- * Create link token from backend API
+ * Create link token from backend API with improved error handling
  */
 private suspend fun createLinkToken(): Result<String> {
     return try {
+        println("🔗 Creating link token from backend...")
+        
         val client = HttpClient {
             install(ContentNegotiation) {
                 json(Json {
@@ -343,18 +388,43 @@ private suspend fun createLinkToken(): Result<String> {
             })
         }
         
+        println("📡 Backend response status: ${response.status}")
+        
         if (response.status.isSuccess()) {
             val responseBody = response.body<JsonObject>()
             val linkToken = responseBody["link_token"]?.jsonPrimitive?.content
                 ?: throw Exception("Missing link_token in response")
+            
+            println("✅ Link token created successfully: ${linkToken.take(20)}...")
             Result.success(linkToken)
         } else {
             val errorBody = response.body<JsonObject>()
             val errorMessage = errorBody["error"]?.jsonPrimitive?.content ?: "Failed to create link token"
+            println("❌ Backend error: $errorMessage")
             Result.failure(Exception(errorMessage))
         }
     } catch (e: Exception) {
+        println("❌ Exception creating link token: ${e.message}")
+        e.printStackTrace()
         Result.failure(e)
+    }
+}
+
+/**
+ * Test Plaid SDK availability
+ */
+fun testPlaidSDKAvailability(): Boolean {
+    return try {
+        // This is a simple test to check if Plaid SDK classes are available
+        println("🔍 Testing Plaid SDK availability...")
+        
+        // Try to access Plaid SDK classes (this will fail if SDK is not properly included)
+        val plaidClass = Class.forName("com.plaid.link.Plaid")
+        println("✅ Plaid SDK is available")
+        true
+    } catch (e: Exception) {
+        println("❌ Plaid SDK not available: ${e.message}")
+        false
     }
 }
 
@@ -368,3 +438,9 @@ expect class PlaidLinkLauncher(context: Any) {
         onError: (String) -> Unit
     )
 }
+
+/**
+ * Platform-specific context getter
+ */
+@Composable
+expect fun getPlatformContext(): Any?

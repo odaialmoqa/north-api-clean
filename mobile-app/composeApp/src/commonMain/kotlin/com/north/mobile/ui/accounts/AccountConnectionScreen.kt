@@ -160,42 +160,39 @@ fun ConnectionStartScreen(
         
         // Primary Plaid connection button
         if (onLaunchPlaidLink != null) {
+            println("🔧 DEBUG: onLaunchPlaidLink is NOT null, showing Plaid button")
             Button(
                 onClick = {
+                    println("🔘 Plaid button clicked!")
                     isLaunchingPlaid = true
                     plaidError = null
+                    
+                    // Use a simple approach - just launch Plaid with a test token first
                     scope.launch {
                         try {
-                            // First, get a link token from the backend
-                            val apiClient = com.north.mobile.data.api.ApiClient()
-                            val sessionManager = com.north.mobile.data.auth.SessionManagerImpl()
-                            val authToken = sessionManager.getAuthToken()
-                            println("🔑 Auth token for link token request: ${authToken?.take(20)}...")
+                            println("🔄 Starting Plaid Link test...")
                             
-                            if (authToken == null) {
-                                throw Exception("User not authenticated - no auth token available")
-                            }
+                            // For now, let's just test if the Plaid Link UI launches at all
+                            // We'll use a simple test token to see if the UI appears
+                            val testToken = "link-sandbox-1234567890"
                             
-                            val response = apiClient.post<com.north.mobile.data.plaid.LinkTokenResponse>(
-                                "/api/plaid/create-link-token", 
-                                emptyMap<String, Any>(),
-                                authToken
-                            )
+                            println("🚀 Launching Plaid Link with test token...")
                             
-                            // Launch Plaid Link with the real token
-                            onLaunchPlaidLink(response.link_token) { publicToken ->
+                            // Launch Plaid Link with test token
+                            onLaunchPlaidLink(testToken) { publicToken ->
                                 isLaunchingPlaid = false
                                 if (publicToken == null) {
                                     plaidError = "Connection was cancelled or failed."
+                                    println("❌ Public token is null - Plaid Link was cancelled or failed")
                                 } else {
-                                    // Success! The public token will be handled by the parent component
                                     println("✅ Got public token: $publicToken")
                                 }
                             }
                         } catch (e: Exception) {
                             isLaunchingPlaid = false
-                            plaidError = e.message ?: "Failed to initialize connection."
-                            println("❌ Failed to get link token: ${e.message}")
+                            plaidError = "Failed to launch Plaid: ${e.message}"
+                            println("❌ Exception launching Plaid: ${e.message}")
+                            e.printStackTrace()
                         }
                     }
                 },
@@ -227,6 +224,7 @@ fun ConnectionStartScreen(
                 )
             }
         } else {
+            println("🔧 DEBUG: onLaunchPlaidLink is NULL, showing fallback button")
             // Fallback button if Plaid Link is not available
             Button(
                 onClick = onStartConnection,

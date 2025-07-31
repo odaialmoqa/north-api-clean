@@ -8,7 +8,7 @@ package com.north.mobile.di
 // import com.north.mobile.data.repository.AccountRepository
 // import com.north.mobile.data.repository.AccountRepositoryImpl
 import com.north.mobile.data.plaid.PlaidService
-import com.north.mobile.data.plaid.PlaidServiceImpl
+import com.north.mobile.data.api.ApiClient
 // import com.north.mobile.data.plaid.AccountLinkingManager
 // import com.north.mobile.data.plaid.AccountLinkingManagerImpl
 import com.north.mobile.data.plaid.PlaidEnvironment
@@ -57,14 +57,12 @@ val sharedModule = module {
     // single<UserRepository> { UserRepositoryImpl(get(), get()) }
     // single<AccountRepository> { AccountRepositoryImpl(get()) }
     
+    // API Client
+    single<ApiClient> { ApiClient() }
+    
     // Plaid Integration
     single<PlaidService> { 
-        PlaidServiceImpl(
-            httpClient = get(),
-            clientId = PlaidConfig.CLIENT_ID,
-            secret = PlaidConfig.currentSecret,
-            environment = PlaidConfig.CURRENT_ENVIRONMENT
-        )
+        PlaidService(get())
     }
     
     // single<AccountLinkingManager> { 

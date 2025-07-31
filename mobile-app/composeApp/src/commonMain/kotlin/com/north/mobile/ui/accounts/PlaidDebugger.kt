@@ -55,7 +55,12 @@ object PlaidDebugger {
         }
         
         println("   Valid format: $isValid")
-        println("   Expected prefix: ${when(tokenType) { "link" -> "link-", "public" -> "public-", "access" -> "access-", else -> "unknown" }}")
+        println("   Expected prefix: ${when(tokenType) { 
+            "link" -> "link-"
+            "public" -> "public-"
+            "access" -> "access-"
+            else -> "unknown"
+        }}")
         
         if (!isValid) {
             println("   ❌ INVALID TOKEN FORMAT!")

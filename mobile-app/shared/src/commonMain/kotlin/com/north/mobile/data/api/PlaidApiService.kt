@@ -23,7 +23,10 @@ data class ExchangeTokenResponse(
     val success: Boolean,
     val accounts: List<PlaidAccount>,
     val access_token: String,
-    val item_id: String
+    val item_id: String,
+    val institution_name: String = "",
+    val transactions_synced: Boolean = false,
+    val insights_generated: Boolean = false
 )
 
 @Serializable

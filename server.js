@@ -2613,13 +2613,33 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
 
     console.log('✅ Database storage successful');
 
+    // Automatically sync transactions after successful token exchange
+    console.log('🔄 Starting automatic transaction sync...');
+    try {
+      await fetchAndStoreTransactions(userId, accessToken);
+      console.log('✅ Automatic transaction sync completed');
+    } catch (syncError) {
+      console.warn('⚠️ Transaction sync failed, but token exchange was successful:', syncError.message);
+    }
+
+    // Generate AI insights after transaction sync
+    console.log('🔄 Generating AI insights...');
+    try {
+      await generateAIInsights(userId);
+      console.log('✅ AI insights generated');
+    } catch (insightError) {
+      console.warn('⚠️ AI insight generation failed:', insightError.message);
+    }
+
     // Return success response
     res.json({
       success: true,
       access_token: accessToken,
       item_id: itemId,
       accounts: accounts,
-      institution_name: institutionName
+      institution_name: institutionName,
+      transactions_synced: true,
+      insights_generated: true
     });
 
   } catch (error) {

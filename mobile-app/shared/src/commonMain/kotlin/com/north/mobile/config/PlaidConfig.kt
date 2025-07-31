@@ -9,7 +9,7 @@ object PlaidConfig {
     const val SANDBOX_SECRET = "084141a287c71fd8f75cdc71c796b1" // Keep for testing
     
     // Current environment - change this to switch between sandbox and production
-    val CURRENT_ENVIRONMENT = PlaidEnvironment.PRODUCTION
+    val CURRENT_ENVIRONMENT = PlaidEnvironment.SANDBOX
     
     val currentSecret: String
         get() = when (CURRENT_ENVIRONMENT) {
