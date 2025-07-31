@@ -609,40 +609,176 @@ app.post('/api/user/profile', authenticateToken, async (req, res) => {
 
 // Financial Data Endpoints
 
-// Get user's financial summary
+// Get user's financial summary with real Plaid data
 app.get('/api/financial/summary', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Mock financial data - replace with real data from your financial aggregation service
-    const summary = {
-      netWorth: 124500.50,
-      totalAssets: 150000.00,
-      totalLiabilities: 25500.50,
-      monthlyIncome: 8200.00,
-      monthlyExpenses: 5400.00,
-      accounts: [
-        {
-          id: 'acc_1',
-          name: 'RBC Checking',
-          type: 'checking',
-          balance: 2450.00,
-          currency: 'CAD'
-        },
-        {
-          id: 'acc_2',
-          name: 'Tangerine Savings',
-          type: 'savings',
-          balance: 15800.00,
-          currency: 'CAD'
+    // Get user's Plaid access tokens
+    const plaidItemsResult = await pool.query(
+      'SELECT access_token, institution_name FROM plaid_items WHERE user_id = $1',
+      [userId]
+    );
+
+    let realAccounts = [];
+    let totalAssets = 0;
+    let totalLiabilities = 0;
+
+    if (plaidItemsResult.rows.length > 0) {
+      console.log(`🏦 Fetching real account data for ${plaidItemsResult.rows.length} connected institutions`);
+      
+      // Fetch account balances from each connected institution
+      for (const plaidItem of plaidItemsResult.rows) {
+        try {
+          const accountsRequest = {
+            access_token: plaidItem.access_token,
+          };
+
+          const accountsResponse = await plaidClient.accountsGet(accountsRequest);
+          const accounts = accountsResponse.data.accounts;
+
+          console.log(`📊 Found ${accounts.length} accounts at ${plaidItem.institution_name}`);
+
+          for (const account of accounts) {
+            const balance = account.balances.current || 0;
+            const availableBalance = account.balances.available || balance;
+            
+            // Categorize accounts as assets or liabilities
+            const isAsset = ['depository', 'investment', 'brokerage'].includes(account.type);
+            const isLiability = ['credit', 'loan'].includes(account.type);
+
+            if (isAsset) {
+              totalAssets += Math.abs(balance);
+            } else if (isLiability) {
+              totalLiabilities += Math.abs(balance);
+            }
+
+            realAccounts.push({
+              id: account.account_id,
+              name: account.name,
+              officialName: account.official_name,
+              type: account.subtype || account.type,
+              balance: balance,
+              availableBalance: availableBalance,
+              currency: account.balances.iso_currency_code || 'USD',
+              institution: plaidItem.institution_name,
+              mask: account.mask,
+              isAsset: isAsset,
+              isLiability: isLiability
+            });
+          }
+        } catch (accountError) {
+          console.warn(`⚠️ Failed to fetch accounts for ${plaidItem.institution_name}:`, accountError.message);
         }
-      ]
+      }
+    }
+
+    // Calculate net worth
+    const netWorth = totalAssets - totalLiabilities;
+
+    // Calculate monthly income/expenses from recent transactions
+    let monthlyIncome = 0;
+    let monthlyExpenses = 0;
+
+    try {
+      const transactionsResult = await pool.query(`
+        SELECT amount, category
+        FROM transactions 
+        WHERE user_id = $1 AND date >= NOW() - INTERVAL '30 days'
+      `, [userId]);
+
+      for (const txn of transactionsResult.rows) {
+        const amount = parseFloat(txn.amount);
+        if (amount > 0) {
+          monthlyIncome += amount;
+        } else {
+          monthlyExpenses += Math.abs(amount);
+        }
+      }
+    } catch (txnError) {
+      console.warn('⚠️ Failed to calculate monthly income/expenses:', txnError.message);
+    }
+
+    const summary = {
+      netWorth: Math.round(netWorth * 100) / 100,
+      totalAssets: Math.round(totalAssets * 100) / 100,
+      totalLiabilities: Math.round(totalLiabilities * 100) / 100,
+      monthlyIncome: Math.round(monthlyIncome * 100) / 100,
+      monthlyExpenses: Math.round(monthlyExpenses * 100) / 100,
+      accounts: realAccounts,
+      accountsCount: realAccounts.length,
+      institutionsCount: plaidItemsResult.rows.length,
+      lastUpdated: new Date().toISOString(),
+      dataSource: plaidItemsResult.rows.length > 0 ? 'plaid' : 'mock'
     };
+
+    console.log(`💰 Financial Summary for user ${userId}:`);
+    console.log(`  Net Worth: $${summary.netWorth}`);
+    console.log(`  Assets: $${summary.totalAssets}`);
+    console.log(`  Liabilities: $${summary.totalLiabilities}`);
+    console.log(`  Accounts: ${summary.accountsCount}`);
 
     res.json(summary);
   } catch (error) {
     console.error('Financial summary error:', error);
-    res.status(500).json({ error: 'Failed to fetch financial summary' });
+    res.status(500).json({ error: 'Failed to fetch financial summary', details: error.message });
+  }
+});
+
+// Refresh account balances from Plaid
+app.post('/api/financial/refresh-balances', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Get user's Plaid access tokens
+    const plaidItemsResult = await pool.query(
+      'SELECT access_token, institution_name FROM plaid_items WHERE user_id = $1',
+      [userId]
+    );
+
+    if (plaidItemsResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No connected accounts found' });
+    }
+
+    let refreshedAccounts = [];
+    let totalRefreshed = 0;
+
+    for (const plaidItem of plaidItemsResult.rows) {
+      try {
+        console.log(`🔄 Refreshing balances for ${plaidItem.institution_name}`);
+        
+        const accountsRequest = {
+          access_token: plaidItem.access_token,
+        };
+
+        const accountsResponse = await plaidClient.accountsGet(accountsRequest);
+        const accounts = accountsResponse.data.accounts;
+
+        for (const account of accounts) {
+          refreshedAccounts.push({
+            id: account.account_id,
+            name: account.name,
+            balance: account.balances.current || 0,
+            availableBalance: account.balances.available || account.balances.current || 0,
+            institution: plaidItem.institution_name
+          });
+          totalRefreshed++;
+        }
+      } catch (refreshError) {
+        console.warn(`⚠️ Failed to refresh ${plaidItem.institution_name}:`, refreshError.message);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Refreshed ${totalRefreshed} accounts from ${plaidItemsResult.rows.length} institutions`,
+      accounts: refreshedAccounts,
+      refreshedAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Balance refresh error:', error);
+    res.status(500).json({ error: 'Failed to refresh balances', details: error.message });
   }
 });
 
