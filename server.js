@@ -2693,51 +2693,44 @@ app.get('/api/plaid/accounts', authenticateToken, async (req, res) => {
 // Sync Account Transactions
 app.post('/api/plaid/sync-transactions', authenticateToken, async (req, res) => {
   try {
-    const { accountId } = req.body;
-    const userId = req.user.userId;
+    const { accountId, userId: requestUserId } = req.body;
+    const userId = requestUserId || req.user.userId;
 
-    if (!accountId) {
-      return res.status(400).json({ error: 'Account ID is required' });
+    // Get user's Plaid access token from database
+    const result = await pool.query(
+      'SELECT access_token, institution_name FROM plaid_items WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No Plaid account found for user' });
     }
 
-    // Mock transaction data
-    const transactions = [
-      {
-        id: `txn_${accountId}_1`,
-        accountId: accountId,
-        amount: -4.50,
-        description: 'Starbucks Coffee',
-        category: ['Food and Drink', 'Restaurants', 'Coffee Shop'],
-        date: '2024-01-15',
-        merchantName: 'Starbucks'
-      },
-      {
-        id: `txn_${accountId}_2`,
-        accountId: accountId,
-        amount: -85.00,
-        description: 'Metro Grocery Store',
-        category: ['Shops', 'Food and Beverage Store', 'Supermarkets and Groceries'],
-        date: '2024-01-14',
-        merchantName: 'Metro'
-      },
-      {
-        id: `txn_${accountId}_3`,
-        accountId: accountId,
-        amount: -67.00,
-        description: 'Gas Station',
-        category: ['Transportation', 'Gas Stations'],
-        date: '2024-01-13',
-        merchantName: 'Shell'
-      }
-    ];
+    const accessToken = result.rows[0].access_token;
+    const institutionName = result.rows[0].institution_name;
 
-    res.json({
-      success: true,
-      transactions: transactions
+    console.log(`🔄 Syncing transactions for user ${userId} with ${institutionName}`);
+
+    // Fetch and store transactions using real Plaid data
+    await fetchAndStoreTransactions(userId, accessToken);
+
+    // Generate AI insights after sync
+    try {
+      await generateAIInsights(userId);
+      console.log('✅ AI insights generated after sync');
+    } catch (insightError) {
+      console.warn('⚠️ AI insight generation failed:', insightError.message);
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Transactions synced successfully',
+      institution: institutionName
     });
+
   } catch (error) {
     console.error('Sync transactions error:', error);
-    res.status(500).json({ error: 'Failed to sync transactions' });
+    res.status(500).json({ error: 'Failed to sync transactions', details: error.message });
   }
 });
 
