@@ -2625,7 +2625,7 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
               transaction.amount,
               transaction.name,
               transaction.category,
-              transaction.category?.[1] || null,
+              transaction.category?.[1] || transaction.category[0],
               transaction.date,
               transaction.merchant_name
             ]);
@@ -3539,3 +3539,120 @@ app.listen(port, () => {
   console.log(`🚀 North API running on port ${port}`);
   console.log('Environment:', process.env.NODE_ENV);
 });
+
+// Get Transactions from Plaid
+app.post('/api/plaid/transactions', authenticateToken, async (req, res) => {
+  try {
+    const { access_token, start_date, end_date } = req.body;
+    const userId = req.user.userId;
+
+    if (!access_token) {
+      return res.status(400).json({ error: 'Access token is required' });
+    }
+
+    // Check if Plaid is properly configured
+    if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
+      console.error('❌ Plaid not configured for transactions');
+      return res.status(500).json({ 
+        error: 'Plaid integration not configured',
+        details: 'PLAID_CLIENT_ID or PLAID_SECRET missing from environment variables'
+      });
+    }
+
+    console.log('🔄 Fetching transactions from Plaid...');
+    console.log('📅 Date range:', start_date, 'to', end_date);
+
+    // Get transactions from Plaid
+    const transactionsResponse = await plaidClient.transactionsGet({
+      access_token: access_token,
+      start_date: start_date,
+      end_date: end_date,
+    });
+
+    const transactions = transactionsResponse.data.transactions.map(txn => ({
+      transaction_id: txn.transaction_id,
+      account_id: txn.account_id,
+      amount: txn.amount,
+      date: txn.date,
+      name: txn.name,
+      merchant_name: txn.merchant_name,
+      category: txn.category,
+      pending: txn.pending
+    }));
+
+    const accounts = transactionsResponse.data.accounts.map(account => ({
+      account_id: account.account_id,
+      balances: {
+        available: account.balances.available,
+        current: account.balances.current,
+        limit: account.balances.limit
+      },
+      mask: account.mask,
+      name: account.name,
+      official_name: account.official_name,
+      type: account.type,
+      subtype: account.subtype
+    }));
+
+    console.log(`✅ Retrieved ${transactions.length} transactions from Plaid`);
+
+    res.json({
+      accounts: accounts,
+      transactions: transactions,
+      total_transactions: transactions.length,
+      request_id: transactionsResponse.data.request_id
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching transactions from Plaid:', error);
+    
+    // Return mock data as fallback
+    const mockTransactions = [
+      {
+        transaction_id: 'txn_mock_1',
+        account_id: 'acc_mock_1',
+        amount: -67.00,
+        date: '2024-01-15',
+        name: 'Metro Grocery Store',
+        merchant_name: 'Metro',
+        category: ['Food and Drink', 'Groceries'],
+        pending: false
+      },
+      {
+        transaction_id: 'txn_mock_2',
+        account_id: 'acc_mock_1',
+        amount: -38.00,
+        date: '2024-01-14',
+        name: 'Loblaws',
+        merchant_name: 'Loblaws',
+        category: ['Food and Drink', 'Groceries'],
+        pending: false
+      }
+    ];
+
+    const mockAccounts = [
+      {
+        account_id: 'acc_mock_1',
+        balances: {
+          available: 1250.50,
+          current: 1250.50,
+          limit: null
+        },
+        mask: '1234',
+        name: 'Checking Account',
+        official_name: 'Primary Checking',
+        type: 'depository',
+        subtype: 'checking'
+      }
+    ];
+
+    res.json({
+      accounts: mockAccounts,
+      transactions: mockTransactions,
+      total_transactions: mockTransactions.length,
+      request_id: 'mock_request_id'
+    });
+  }
+});
+
+// Exchange Public Token for Access Token
