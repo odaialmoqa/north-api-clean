@@ -2514,39 +2514,58 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
     const { public_token } = req.body;
     const userId = req.user.userId;
 
+    console.log('🔄 Starting token exchange...');
+    console.log('🔧 Plaid environment:', PLAID_ENV);
+    console.log('🔧 Public token type:', public_token?.substring(0, 20) + '...');
+
     // Check if Plaid is properly configured
     if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
       console.error('❌ Plaid not configured for token exchange');
-      console.error('PLAID_CLIENT_ID exists:', !!PLAID_CLIENT_ID);
-      console.error('PLAID_SECRET exists:', !!PLAID_SECRET);
-      console.error('PLAID_ENV:', PLAID_ENV);
       return res.status(500).json({ 
         error: 'Plaid integration not configured',
-        details: 'PLAID_CLIENT_ID or PLAID_SECRET missing from environment variables',
-        plaid_client_id_exists: !!PLAID_CLIENT_ID,
-        plaid_secret_exists: !!PLAID_SECRET,
-        plaid_env: PLAID_ENV
+        details: 'PLAID_CLIENT_ID or PLAID_SECRET missing from environment variables'
       });
     }
-
-    console.log('🔄 Exchanging public token:', public_token?.substring(0, 20) + '...');
-    console.log('🔧 Using Plaid environment:', PLAID_ENV);
-    console.log('🔧 Plaid client configured:', !!PLAID_CLIENT_ID);
 
     if (!public_token) {
       return res.status(400).json({ error: 'Public token is required' });
     }
+
+    // Check if token matches environment
+    const isSandboxToken = public_token.includes('sandbox');
+    const isProductionToken = public_token.includes('production');
+    
+    console.log('🔍 Token analysis:');
+    console.log('  - Is sandbox token:', isSandboxToken);
+    console.log('  - Is production token:', isProductionToken);
+    console.log('  - Current environment:', PLAID_ENV);
+    
+    if ((isSandboxToken && PLAID_ENV !== 'sandbox') || (isProductionToken && PLAID_ENV !== 'production')) {
+      console.error('❌ Token environment mismatch!');
+      return res.status(400).json({ 
+        error: 'Token environment mismatch',
+        details: `Token is for ${isSandboxToken ? 'sandbox' : 'production'} but server is in ${PLAID_ENV} mode`
+      });
+    }
+
+    console.log('✅ Token environment matches, proceeding with exchange...');
 
     // Exchange public token for access token
     const exchangeRequest = {
       public_token: public_token,
     };
 
+    console.log('🔄 Calling Plaid API for token exchange...');
     const exchangeResponse = await plaidClient.itemPublicTokenExchange(exchangeRequest);
     const accessToken = exchangeResponse.data.access_token;
     const itemId = exchangeResponse.data.item_id;
 
+    console.log('✅ Token exchange successful!');
+    console.log('  - Access token:', accessToken.substring(0, 20) + '...');
+    console.log('  - Item ID:', itemId);
+
     // Get account information
+    console.log('🔄 Getting account information...');
     const accountsRequest = {
       access_token: accessToken,
     };
@@ -2563,6 +2582,8 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
       connectionStatus: 'HEALTHY'
     }));
 
+    console.log(`✅ Retrieved ${accounts.length} accounts`);
+
     // Get institution information
     const institutionRequest = {
       institution_id: accountsResponse.data.item.institution_id,
@@ -2573,11 +2594,13 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
     try {
       const institutionResponse = await plaidClient.institutionsGetById(institutionRequest);
       institutionName = institutionResponse.data.institution.name;
+      console.log('✅ Institution name:', institutionName);
     } catch (instError) {
       console.warn('Could not fetch institution name:', instError.message);
     }
 
     // Store access token in database
+    console.log('🔄 Storing in database...');
     await pool.query(`
       INSERT INTO plaid_items (user_id, access_token, item_id, institution_id, institution_name, updated_at)
       VALUES ($1, $2, $3, $4, $5, NOW())
@@ -2588,160 +2611,25 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
         updated_at = NOW()
     `, [userId, accessToken, itemId, accountsResponse.data.item.institution_id, institutionName]);
 
-    // Automatically sync transactions after successful connection
-    console.log('🔄 Triggering automatic transaction sync...');
-    
-    // Trigger transaction analysis in the background
-    setTimeout(async () => {
-      try {
-        console.log('📊 Starting background transaction sync for user:', userId);
-        
-        // Get transactions (last 90 days)
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - 90);
+    console.log('✅ Database storage successful');
 
-        const transactionsResponse = await plaidClient.transactionsGet({
-          access_token: accessToken,
-          start_date: startDate.toISOString().split('T')[0],
-          end_date: endDate.toISOString().split('T')[0],
-        });
-
-        console.log(`📈 Retrieved ${transactionsResponse.data.transactions.length} transactions`);
-
-        // Store transactions in database
-        for (const transaction of transactionsResponse.data.transactions) {
-          try {
-            await pool.query(`
-              INSERT INTO transactions (
-                user_id, plaid_transaction_id, account_id, amount, description,
-                category, subcategory, date, merchant_name
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-              ON CONFLICT (plaid_transaction_id) DO NOTHING
-            `, [
-              userId,
-              transaction.transaction_id,
-              transaction.account_id,
-              transaction.amount,
-              transaction.name,
-              transaction.category,
-              transaction.category?.[1] || transaction.category[0],
-              transaction.date,
-              transaction.merchant_name
-            ]);
-          } catch (txnError) {
-            console.error('Error storing transaction:', txnError);
-          }
-        }
-
-        console.log('✅ Background transaction sync completed');
-        
-        // Generate AI insights after syncing
-        await generateAIInsights(userId);
-        await generateDynamicGoals(userId);
-        
-      } catch (syncError) {
-        console.error('❌ Background transaction sync failed:', syncError);
-      }
-    }, 2000); // 2 second delay to let the response complete first
-
-    // Automatically sync transactions after successful connection
-    console.log('🔄 Triggering automatic transaction sync...');
-    try {
-      // Trigger transaction analysis in the background
-      setTimeout(async () => {
-        try {
-          console.log('📊 Starting background transaction sync for user:', userId);
-          
-          // Get transactions (last 90 days)
-          const endDate = new Date();
-          const startDate = new Date();
-          startDate.setDate(startDate.getDate() - 90);
-
-          const transactionsResponse = await plaidClient.transactionsGet({
-            access_token: accessToken,
-            start_date: startDate.toISOString().split('T')[0],
-            end_date: endDate.toISOString().split('T')[0],
-          });
-
-          console.log(`📈 Retrieved ${transactionsResponse.data.transactions.length} transactions`);
-
-          // Store transactions in database
-          for (const transaction of transactionsResponse.data.transactions) {
-            try {
-              await pool.query(`
-                INSERT INTO transactions (
-                  user_id, plaid_transaction_id, account_id, amount, description,
-                  category, subcategory, date, merchant_name
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                ON CONFLICT (plaid_transaction_id) DO NOTHING
-              `, [
-                userId,
-                transaction.transaction_id,
-                transaction.account_id,
-                transaction.amount,
-                transaction.name,
-                transaction.category,
-                transaction.category?.[1] || null,
-                transaction.date,
-                transaction.merchant_name
-              ]);
-            } catch (txnError) {
-              console.error('Error storing transaction:', txnError);
-            }
-          }
-
-          console.log('✅ Background transaction sync completed');
-          
-          // Generate AI insights after syncing
-          await generateAIInsights(userId);
-          await generateDynamicGoals(userId);
-          
-        } catch (syncError) {
-          console.error('❌ Background transaction sync failed:', syncError);
-        }
-      }, 2000); // 2 second delay to let the response complete first
-      
-    } catch (bgError) {
-      console.warn('Background sync setup failed:', bgError);
-    }
-
+    // Return success response
     res.json({
       success: true,
-      accounts: accounts,
       access_token: accessToken,
       item_id: itemId,
-      message: 'Account connected successfully. Transaction sync started in background.',
-      message: 'Account connected successfully. Transaction sync started in background.'
+      accounts: accounts,
+      institution_name: institutionName
     });
+
   } catch (error) {
-    console.error('❌ Exchange public token error:', error);
-    console.error('🔍 Detailed error analysis:', {
-      message: error.message,
-      code: error.code,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      plaid_response: error.response?.data,
-      plaid_error_type: error.response?.data?.error_type,
-      plaid_error_code: error.response?.data?.error_code,
-      plaid_display_message: error.response?.data?.display_message,
-      plaid_request_id: error.response?.data?.request_id,
-      plaid_client_id_exists: !!PLAID_CLIENT_ID,
-      plaid_secret_exists: !!PLAID_SECRET,
-      plaid_env: PLAID_ENV,
-      public_token_preview: public_token ? `${public_token.substring(0, 20)}...` : 'MISSING',
-      user_id: userId
-    });
+    console.error('❌ Token exchange error:', error);
+    console.error('❌ Error details:', error.response?.data || error.message);
     
-    // Return more detailed error information
     res.status(500).json({ 
-      error: 'Failed to exchange public token',
-      details: error.message,
-      plaid_configured: !!(PLAID_CLIENT_ID && PLAID_SECRET),
-      plaid_error_type: error.response?.data?.error_type,
-      plaid_error_code: error.response?.data?.error_code,
-      plaid_display_message: error.response?.data?.display_message,
-      plaid_request_id: error.response?.data?.request_id
+      error: 'Failed to exchange token',
+      details: error.response?.data || error.message,
+      plaid_env: PLAID_ENV
     });
   }
 });
