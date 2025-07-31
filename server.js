@@ -3199,6 +3199,7 @@ async function handleIdentityWebhook(webhook) {
 async function fetchAndStoreTransactions(userId, accessToken) {
   try {
     console.log('🔄 Fetching transactions for user:', userId);
+    console.log('🔧 Access token preview:', accessToken?.substring(0, 20) + '...');
 
     // Get transactions from last 90 days
     const startDate = new Date();
@@ -3212,34 +3213,62 @@ async function fetchAndStoreTransactions(userId, accessToken) {
       count: 500
     };
 
+    console.log('🔧 Transaction request:', {
+      start_date: transactionsRequest.start_date,
+      end_date: transactionsRequest.end_date,
+      count: transactionsRequest.count
+    });
+
+    console.log('🔄 Calling Plaid transactionsGet API...');
     const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
     const transactions = transactionsResponse.data.transactions;
 
-    console.log(`📊 Processing ${transactions.length} transactions`);
+    console.log(`📊 Processing ${transactions.length} transactions from Plaid`);
+
+    if (transactions.length === 0) {
+      console.log('⚠️ No transactions returned from Plaid API');
+      return;
+    }
 
     // Store transactions in database
+    console.log('🔄 Storing transactions in database...');
+    let storedCount = 0;
+    
     for (const txn of transactions) {
-      await pool.query(`
-        INSERT INTO transactions (
-          user_id, plaid_transaction_id, account_id, amount, description,
-          category, subcategory, date, merchant_name
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-        ON CONFLICT (plaid_transaction_id) DO UPDATE SET
-          amount = EXCLUDED.amount,
-          description = EXCLUDED.description,
-          updated_at = NOW()
-      `, [
-        userId,
-        txn.transaction_id,
-        txn.account_id,
-        -txn.amount, // Plaid uses positive for outflows, we use negative
-        txn.name,
-        txn.category || [],
-        txn.category?.[1] || null,
-        txn.date,
-        txn.merchant_name
-      ]);
+      try {
+        console.log(`🔧 Storing transaction: ${txn.name} - $${Math.abs(txn.amount)}`);
+        
+        await pool.query(`
+          INSERT INTO transactions (
+            user_id, plaid_transaction_id, account_id, amount, description,
+            category, subcategory, date, merchant_name
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          ON CONFLICT (plaid_transaction_id) DO UPDATE SET
+            amount = EXCLUDED.amount,
+            description = EXCLUDED.description,
+            updated_at = NOW()
+        `, [
+          userId,
+          txn.transaction_id,
+          txn.account_id,
+          -txn.amount, // Plaid uses positive for outflows, we use negative
+          txn.name,
+          txn.category || [],
+          txn.category?.[1] || null,
+          txn.date,
+          txn.merchant_name
+        ]);
+        
+        storedCount++;
+        console.log(`✅ Transaction stored successfully (${storedCount}/${transactions.length})`);
+        
+      } catch (txnError) {
+        console.error(`❌ Failed to store transaction ${txn.transaction_id}:`, txnError.message);
+        throw txnError; // Stop on first error
+      }
     }
+    
+    console.log(`✅ Successfully stored ${storedCount} transactions in database`);
 
     // Update spending patterns
     await updateSpendingPatterns(userId);
@@ -3248,6 +3277,9 @@ async function fetchAndStoreTransactions(userId, accessToken) {
 
   } catch (error) {
     console.error('❌ Error fetching transactions:', error);
+    console.error('❌ Error details:', error.message);
+    console.error('❌ Stack trace:', error.stack);
+    throw error; // Re-throw the error so the calling function knows it failed
   }
 }
 
