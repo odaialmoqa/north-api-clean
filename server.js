@@ -68,6 +68,9 @@ if (GEMINI_API_KEY) {
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Trust proxy for Railway deployment (fixes rate limiting issues)
+app.set('trust proxy', 1);
+
 // Database connection with detailed logging
 console.log('=== DATABASE CONNECTION DEBUG ===');
 console.log('DATABASE_URL exists:', !!process.env.DATABASE_URL);
@@ -279,10 +282,13 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting
+// Rate limiting - configured for Railway proxy
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100
+  max: 100,
+  trustProxy: true, // Trust Railway's proxy headers
+  standardHeaders: true,
+  legacyHeaders: false
 });
 app.use('/api/', limiter);
 
