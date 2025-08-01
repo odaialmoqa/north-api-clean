@@ -2848,6 +2848,51 @@ app.post('/api/plaid/manual-sync', authenticateToken, async (req, res) => {
   }
 });
 
+// Debug TD Canada Trust Sync (temporary endpoint)
+app.get('/api/debug/td-sync', async (req, res) => {
+  try {
+    console.log('🏦 DEBUG: Testing TD Canada Trust transaction sync');
+    
+    // Your actual TD Canada Trust data
+    const userId = '144d3d4e-29f3-4fc8-8932-b3c92d93bda2';
+    const accessToken = 'access-production-84245284-d060-4fe8-9d13-1e932d70b124';
+    
+    console.log('🔧 Testing with actual TD Canada Trust access token...');
+    
+    // Test the fetchAndStoreTransactions function directly
+    await fetchAndStoreTransactions(userId, accessToken);
+    
+    // Check how many transactions were stored
+    const transactionCount = await pool.query(
+      'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+      [userId]
+    );
+    
+    // Get a sample of transactions
+    const sampleTransactions = await pool.query(
+      'SELECT description, amount, date, category FROM transactions WHERE user_id = $1 ORDER BY date DESC LIMIT 5',
+      [userId]
+    );
+    
+    res.json({
+      success: true,
+      message: 'TD Canada Trust sync test completed',
+      user_id: userId,
+      institution: 'TD Canada Trust',
+      transactions_count: parseInt(transactionCount.rows[0].count),
+      sample_transactions: sampleTransactions.rows
+    });
+    
+  } catch (error) {
+    console.error('❌ TD sync debug error:', error);
+    res.status(500).json({
+      error: 'TD sync debug failed',
+      details: error.message,
+      stack: error.stack?.split('\n').slice(0, 10) // First 10 lines of stack trace
+    });
+  }
+});
+
 // Get Connected Accounts
 app.get('/api/plaid/accounts', authenticateToken, async (req, res) => {
   try {
