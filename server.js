@@ -2878,8 +2878,7 @@ app.get('/api/debug/td-sync', async (req, res) => {
       const transactionsRequest = {
         access_token: accessToken,
         start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
-        count: 100 // Reduce count to avoid rate limits
+        end_date: endDate.toISOString().split('T')[0]
       };
 
       console.log('🔧 Transaction request details:', {
@@ -3351,8 +3350,7 @@ async function fetchAndStoreTransactions(userId, accessToken) {
     const transactionsRequest = {
       access_token: accessToken,
       start_date: startDate.toISOString().split('T')[0],
-      end_date: endDate.toISOString().split('T')[0],
-      count: 500
+      end_date: endDate.toISOString().split('T')[0]
     };
 
     console.log('🔧 Transaction request:', {
