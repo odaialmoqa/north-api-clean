@@ -246,6 +246,57 @@ async function initDatabase() {
       );
     `);
 
+    // Create investments table for Plaid investment data
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS investments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plaid_account_id VARCHAR(255) NOT NULL,
+        plaid_security_id VARCHAR(255),
+        institution_value DECIMAL(15,4),
+        institution_price DECIMAL(15,4),
+        institution_price_as_of DATE,
+        quantity DECIMAL(15,8),
+        security_name VARCHAR(255),
+        security_type VARCHAR(100),
+        ticker_symbol VARCHAR(20),
+        close_price DECIMAL(15,4),
+        close_price_as_of DATE,
+        iso_currency_code VARCHAR(10),
+        unofficial_currency_code VARCHAR(10),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, plaid_account_id, plaid_security_id)
+      );
+    `);
+
+    // Create liabilities table for Plaid liability data
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS liabilities (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plaid_account_id VARCHAR(255) NOT NULL,
+        liability_type VARCHAR(50) NOT NULL,
+        current_balance DECIMAL(15,2),
+        minimum_payment_amount DECIMAL(15,2),
+        next_payment_due_date DATE,
+        last_payment_amount DECIMAL(15,2),
+        last_payment_date DATE,
+        interest_rate DECIMAL(8,4),
+        apr_percentage DECIMAL(8,4),
+        credit_limit DECIMAL(15,2),
+        available_credit DECIMAL(15,2),
+        loan_term_months INTEGER,
+        origination_principal_amount DECIMAL(15,2),
+        origination_date DATE,
+        guarantor VARCHAR(255),
+        is_overdue BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, plaid_account_id)
+      );
+    `);
+
     console.log('✅ Database tables initialized');
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
@@ -2969,13 +3020,13 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
 
     console.log('✅ Database storage successful');
 
-    // Automatically sync transactions after successful token exchange
-    console.log('🔄 Starting automatic transaction sync...');
+    // Automatically sync all Plaid data after successful token exchange
+    console.log('🔄 Starting comprehensive automatic data sync...');
     try {
-      await fetchAndStoreTransactions(userId, accessToken);
-      console.log('✅ Automatic transaction sync completed');
+      const syncResults = await fetchAndStoreAllPlaidData(userId, accessToken);
+      console.log('✅ Comprehensive data sync completed:', syncResults);
     } catch (syncError) {
-      console.warn('⚠️ Transaction sync failed, but token exchange was successful:', syncError.message);
+      console.warn('⚠️ Data sync failed, but token exchange was successful:', syncError.message);
     }
 
     // Generate AI insights after transaction sync
@@ -3412,7 +3463,7 @@ app.post('/api/plaid/sync-transactions', authenticateToken, async (req, res) => 
           [userId]
         );
         
-        await fetchAndStoreTransactions(userId, access_token);
+        const syncResults = await fetchAndStoreAllPlaidData(userId, access_token);
         
         const transactionsAfter = await pool.query(
           'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
@@ -3867,6 +3918,233 @@ async function fetchAndStoreTransactions(userId, accessToken) {
     console.error('❌ Error details:', error.message);
     console.error('❌ Stack trace:', error.stack);
     throw error; // Re-throw the error so the calling function knows it failed
+  }
+}
+
+// Comprehensive function to fetch all Plaid data types
+async function fetchAndStoreAllPlaidData(userId, accessToken) {
+  console.log('🔄 Starting comprehensive Plaid data sync for user:', userId);
+  
+  const results = {
+    transactions: { success: false, count: 0, error: null },
+    investments: { success: false, count: 0, error: null },
+    liabilities: { success: false, count: 0, error: null }
+  };
+
+  // 1. Fetch Transactions
+  try {
+    console.log('💰 Fetching transactions...');
+    await fetchAndStoreTransactions(userId, accessToken);
+    results.transactions.success = true;
+    console.log('✅ Transactions sync completed');
+  } catch (error) {
+    console.warn('⚠️ Transactions sync failed:', error.message);
+    results.transactions.error = error.message;
+  }
+
+  // 2. Fetch Investments
+  try {
+    console.log('📈 Fetching investments...');
+    const investmentCount = await fetchAndStoreInvestments(userId, accessToken);
+    results.investments.success = true;
+    results.investments.count = investmentCount;
+    console.log(`✅ Investments sync completed (${investmentCount} holdings)`);
+  } catch (error) {
+    console.warn('⚠️ Investments sync failed:', error.message);
+    results.investments.error = error.message;
+  }
+
+  // 3. Fetch Liabilities
+  try {
+    console.log('💳 Fetching liabilities...');
+    const liabilityCount = await fetchAndStoreLiabilities(userId, accessToken);
+    results.liabilities.success = true;
+    results.liabilities.count = liabilityCount;
+    console.log(`✅ Liabilities sync completed (${liabilityCount} accounts)`);
+  } catch (error) {
+    console.warn('⚠️ Liabilities sync failed:', error.message);
+    results.liabilities.error = error.message;
+  }
+
+  console.log('📊 Comprehensive sync results:', results);
+  return results;
+}
+
+// Fetch and store investment holdings
+async function fetchAndStoreInvestments(userId, accessToken) {
+  try {
+    console.log('📈 Fetching investment holdings for user:', userId);
+
+    const investmentsRequest = {
+      access_token: accessToken,
+    };
+
+    console.log('🔄 Calling Plaid investmentsHoldingsGet API...');
+    const investmentsResponse = await plaidClient.investmentsHoldingsGet(investmentsRequest);
+    const holdings = investmentsResponse.data.holdings;
+    const securities = investmentsResponse.data.securities;
+
+    console.log(`📊 Processing ${holdings.length} investment holdings`);
+
+    if (holdings.length === 0) {
+      console.log('⚠️ No investment holdings found');
+      return 0;
+    }
+
+    // Create a map of securities for easy lookup
+    const securitiesMap = {};
+    securities.forEach(security => {
+      securitiesMap[security.security_id] = security;
+    });
+
+    let storedCount = 0;
+    
+    for (const holding of holdings) {
+      try {
+        const security = securitiesMap[holding.security_id] || {};
+        
+        console.log(`🔧 Storing investment: ${security.name || 'Unknown'} - ${holding.quantity} shares`);
+        
+        await pool.query(`
+          INSERT INTO investments (
+            user_id, plaid_account_id, plaid_security_id, institution_value, 
+            institution_price, institution_price_as_of, quantity, security_name,
+            security_type, ticker_symbol, close_price, close_price_as_of,
+            iso_currency_code, unofficial_currency_code, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
+          ON CONFLICT (user_id, plaid_account_id, plaid_security_id) 
+          DO UPDATE SET
+            institution_value = EXCLUDED.institution_value,
+            institution_price = EXCLUDED.institution_price,
+            quantity = EXCLUDED.quantity,
+            close_price = EXCLUDED.close_price,
+            updated_at = NOW()
+        `, [
+          userId,
+          holding.account_id,
+          holding.security_id,
+          holding.institution_value,
+          holding.institution_price,
+          holding.institution_price_as_of,
+          holding.quantity,
+          security.name,
+          security.type,
+          security.ticker_symbol,
+          security.close_price,
+          security.close_price_as_of,
+          holding.iso_currency_code,
+          holding.unofficial_currency_code
+        ]);
+        
+        storedCount++;
+        console.log(`✅ Investment stored successfully (${storedCount}/${holdings.length})`);
+        
+      } catch (holdingError) {
+        console.error(`❌ Failed to store investment ${holding.security_id}:`, holdingError.message);
+      }
+    }
+    
+    console.log(`✅ Successfully stored ${storedCount} investment holdings`);
+    return storedCount;
+
+  } catch (error) {
+    console.error('❌ Error fetching investments:', error);
+    throw error;
+  }
+}
+
+// Fetch and store liability accounts
+async function fetchAndStoreLiabilities(userId, accessToken) {
+  try {
+    console.log('💳 Fetching liabilities for user:', userId);
+
+    const liabilitiesRequest = {
+      access_token: accessToken,
+    };
+
+    console.log('🔄 Calling Plaid liabilitiesGet API...');
+    const liabilitiesResponse = await plaidClient.liabilitiesGet(liabilitiesRequest);
+    const accounts = liabilitiesResponse.data.accounts;
+    const liabilities = liabilitiesResponse.data.liabilities;
+
+    console.log(`📊 Processing ${accounts.length} liability accounts`);
+
+    if (accounts.length === 0) {
+      console.log('⚠️ No liability accounts found');
+      return 0;
+    }
+
+    let storedCount = 0;
+    
+    for (const account of accounts) {
+      try {
+        // Find liability details for this account
+        let liabilityDetails = null;
+        
+        // Check different liability types
+        if (liabilities.credit && liabilities.credit.find(c => c.account_id === account.account_id)) {
+          liabilityDetails = liabilities.credit.find(c => c.account_id === account.account_id);
+          liabilityDetails.type = 'credit';
+        } else if (liabilities.mortgage && liabilities.mortgage.find(m => m.account_id === account.account_id)) {
+          liabilityDetails = liabilities.mortgage.find(m => m.account_id === account.account_id);
+          liabilityDetails.type = 'mortgage';
+        } else if (liabilities.student && liabilities.student.find(s => s.account_id === account.account_id)) {
+          liabilityDetails = liabilities.student.find(s => s.account_id === account.account_id);
+          liabilityDetails.type = 'student';
+        }
+
+        console.log(`🔧 Storing liability: ${account.name} - $${Math.abs(account.balances.current || 0)}`);
+        
+        await pool.query(`
+          INSERT INTO liabilities (
+            user_id, plaid_account_id, liability_type, current_balance,
+            minimum_payment_amount, next_payment_due_date, last_payment_amount,
+            last_payment_date, interest_rate, apr_percentage, credit_limit,
+            available_credit, loan_term_months, origination_principal_amount,
+            origination_date, guarantor, is_overdue, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW())
+          ON CONFLICT (user_id, plaid_account_id) 
+          DO UPDATE SET
+            current_balance = EXCLUDED.current_balance,
+            minimum_payment_amount = EXCLUDED.minimum_payment_amount,
+            next_payment_due_date = EXCLUDED.next_payment_due_date,
+            last_payment_amount = EXCLUDED.last_payment_amount,
+            last_payment_date = EXCLUDED.last_payment_date,
+            updated_at = NOW()
+        `, [
+          userId,
+          account.account_id,
+          liabilityDetails?.type || account.subtype || 'unknown',
+          Math.abs(account.balances.current || 0),
+          liabilityDetails?.minimum_payment_amount,
+          liabilityDetails?.next_payment_due_date,
+          liabilityDetails?.last_payment_amount,
+          liabilityDetails?.last_payment_date,
+          liabilityDetails?.interest_rate_percentage,
+          liabilityDetails?.apr_percentage,
+          liabilityDetails?.credit_limit,
+          liabilityDetails?.available_credit,
+          liabilityDetails?.loan_term?.months,
+          liabilityDetails?.origination_principal_amount,
+          liabilityDetails?.origination_date,
+          liabilityDetails?.guarantor,
+          liabilityDetails?.is_overdue || false
+        ]);
+        
+        storedCount++;
+        console.log(`✅ Liability stored successfully (${storedCount}/${accounts.length})`);
+        
+      } catch (liabilityError) {
+        console.error(`❌ Failed to store liability ${account.account_id}:`, liabilityError.message);
+      }
+    }
+    
+    console.log(`✅ Successfully stored ${storedCount} liability accounts`);
+    return storedCount;
+
+  } catch (error) {
+    console.error('❌ Error fetching liabilities:', error);
+    throw error;
   }
 }
 
