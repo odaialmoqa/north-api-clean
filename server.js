@@ -13,7 +13,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // Plaid configuration
 const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
 const PLAID_SECRET = process.env.PLAID_SECRET;
-const PLAID_ENV = process.env.PLAID_ENV || 'sandbox'; // sandbox, development, or production
+const PLAID_ENV = process.env.PLAID_ENV || 'production'; // Switch to production to avoid sandbox issues
 
 // Validate required environment variables (warnings only in development)
 if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
