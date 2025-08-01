@@ -13,7 +13,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // Plaid configuration
 const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
 const PLAID_SECRET = process.env.PLAID_SECRET;
-const PLAID_ENV = process.env.PLAID_ENV || 'production'; // Switch to production to avoid sandbox issues
+const PLAID_ENV = 'production'; // Force production mode to avoid sandbox issues
 
 // Validate required environment variables (warnings only in development)
 if (!PLAID_CLIENT_ID || !PLAID_SECRET) {
@@ -2793,6 +2793,57 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
       error: 'Failed to exchange token',
       details: error.response?.data || error.message,
       plaid_env: PLAID_ENV
+    });
+  }
+});
+
+// Manual Transaction Sync Endpoint (for debugging)
+app.post('/api/plaid/manual-sync', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    console.log('🔄 Manual sync requested for user:', userId);
+    
+    // Get the user's access token from plaid_items
+    const plaidItemResult = await pool.query(
+      'SELECT access_token, institution_name FROM plaid_items WHERE user_id = $1 LIMIT 1',
+      [userId]
+    );
+    
+    if (plaidItemResult.rows.length === 0) {
+      return res.status(404).json({ 
+        error: 'No connected accounts found',
+        message: 'Please connect a bank account first'
+      });
+    }
+    
+    const accessToken = plaidItemResult.rows[0].access_token;
+    const institutionName = plaidItemResult.rows[0].institution_name;
+    
+    console.log('✅ Found access token for institution:', institutionName);
+    
+    // Manually trigger transaction sync
+    await fetchAndStoreTransactions(userId, accessToken);
+    
+    // Check how many transactions were stored
+    const transactionCount = await pool.query(
+      'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+      [userId]
+    );
+    
+    res.json({
+      success: true,
+      message: 'Manual sync completed',
+      institution: institutionName,
+      transactions_count: parseInt(transactionCount.rows[0].count)
+    });
+    
+  } catch (error) {
+    console.error('❌ Manual sync error:', error);
+    res.status(500).json({
+      error: 'Manual sync failed',
+      details: error.message,
+      stack: error.stack
     });
   }
 });
