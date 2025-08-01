@@ -2858,37 +2858,76 @@ app.get('/api/debug/td-sync', async (req, res) => {
     const accessToken = 'access-production-84245284-d060-4fe8-9d13-1e932d70b124';
     
     console.log('🔧 Testing with actual TD Canada Trust access token...');
+    console.log('🔧 Access token preview:', accessToken.substring(0, 30) + '...');
     
-    // Test the fetchAndStoreTransactions function directly
-    await fetchAndStoreTransactions(userId, accessToken);
-    
-    // Check how many transactions were stored
-    const transactionCount = await pool.query(
-      'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
-      [userId]
-    );
-    
-    // Get a sample of transactions
-    const sampleTransactions = await pool.query(
-      'SELECT description, amount, date, category FROM transactions WHERE user_id = $1 ORDER BY date DESC LIMIT 5',
-      [userId]
-    );
-    
-    res.json({
-      success: true,
-      message: 'TD Canada Trust sync test completed',
-      user_id: userId,
-      institution: 'TD Canada Trust',
-      transactions_count: parseInt(transactionCount.rows[0].count),
-      sample_transactions: sampleTransactions.rows
-    });
+    // First, test if we can get account info (simpler API call)
+    console.log('🔄 Step 1: Testing accounts API...');
+    try {
+      const accountsRequest = { access_token: accessToken };
+      const accountsResponse = await plaidClient.accountsGet(accountsRequest);
+      console.log('✅ Accounts API works!');
+      console.log(`📊 Found ${accountsResponse.data.accounts.length} accounts`);
+      
+      // Now test transactions API with detailed error handling
+      console.log('🔄 Step 2: Testing transactions API...');
+      
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - 30); // Try last 30 days instead of 90
+      const endDate = new Date();
+
+      const transactionsRequest = {
+        access_token: accessToken,
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0],
+        count: 100 // Reduce count to avoid rate limits
+      };
+
+      console.log('🔧 Transaction request details:', {
+        start_date: transactionsRequest.start_date,
+        end_date: transactionsRequest.end_date,
+        count: transactionsRequest.count
+      });
+
+      const transactionsResponse = await plaidClient.transactionsGet(transactionsRequest);
+      const transactions = transactionsResponse.data.transactions;
+      
+      console.log(`✅ Transactions API works! Found ${transactions.length} transactions`);
+      
+      res.json({
+        success: true,
+        message: 'TD Canada Trust API test successful',
+        accounts_count: accountsResponse.data.accounts.length,
+        transactions_count: transactions.length,
+        date_range: {
+          start: transactionsRequest.start_date,
+          end: transactionsRequest.end_date
+        },
+        sample_transactions: transactions.slice(0, 3).map(t => ({
+          name: t.name,
+          amount: t.amount,
+          date: t.date,
+          category: t.category
+        }))
+      });
+      
+    } catch (apiError) {
+      console.error('❌ Plaid API error:', apiError.response?.data || apiError.message);
+      
+      res.status(500).json({
+        error: 'Plaid API failed',
+        plaid_error: apiError.response?.data,
+        error_message: apiError.message,
+        access_token_preview: accessToken.substring(0, 30) + '...',
+        environment: PLAID_ENV
+      });
+    }
     
   } catch (error) {
     console.error('❌ TD sync debug error:', error);
     res.status(500).json({
       error: 'TD sync debug failed',
       details: error.message,
-      stack: error.stack?.split('\n').slice(0, 10) // First 10 lines of stack trace
+      stack: error.stack?.split('\n').slice(0, 5)
     });
   }
 });
