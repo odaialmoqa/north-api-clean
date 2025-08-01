@@ -920,19 +920,36 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
       });
     }
 
-    // Get user's Plaid access tokens from database (optional for general questions)
+    // Check if user has transaction data (either from plaid_items or direct transactions)
     let hasConnectedAccounts = false;
+    let hasTransactionData = false;
     let plaidItemsResult = { rows: [] };
 
     try {
+      // Check for connected accounts
       plaidItemsResult = await pool.query(
         'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1',
         [userId]
       );
       hasConnectedAccounts = plaidItemsResult.rows.length > 0;
+      
+      // Also check for transaction data directly
+      const transactionCheck = await pool.query(
+        'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+        [userId]
+      );
+      hasTransactionData = parseInt(transactionCheck.rows[0].count) > 0;
+      
+      console.log('🔍 Data availability:', {
+        hasConnectedAccounts,
+        hasTransactionData,
+        transactionCount: transactionCheck.rows[0].count
+      });
+      
     } catch (dbError) {
       console.warn('⚠️ Database query failed, continuing without account data:', dbError.message);
       hasConnectedAccounts = false;
+      hasTransactionData = false;
     }
 
     // Check if this is a question that requires transaction data
@@ -959,7 +976,7 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
     let goalsData = [];
     let spendingPatterns = [];
 
-    if (hasConnectedAccounts) {
+    if (hasConnectedAccounts || hasTransactionData) {
       try {
         // Get recent transactions from database
         const transactionsResult = await pool.query(`
