@@ -4467,6 +4467,7 @@ async function removeTransactions(removedTransactions) {
   }
 }
 
+// Initialize database tables on startup
 initDatabase();
 
 app.listen(port, () => {
