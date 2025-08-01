@@ -2931,6 +2931,45 @@ app.get('/api/debug/td-sync', async (req, res) => {
   }
 });
 
+// Debug: Sync TD data for a specific user (for AI CFO testing)
+app.post('/api/debug/sync-td-for-user', async (req, res) => {
+  try {
+    const { user_id } = req.body;
+    
+    console.log('🔄 Syncing TD Canada Trust data for user:', user_id);
+    
+    // Your actual TD Canada Trust access token
+    const accessToken = 'access-production-84245284-d060-4fe8-9d13-1e932d70b124';
+    
+    // Use the fixed fetchAndStoreTransactions function
+    await fetchAndStoreTransactions(user_id, accessToken);
+    
+    // Count stored transactions
+    const transactionCount = await pool.query(
+      'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+      [user_id]
+    );
+    
+    // Generate AI insights after storing transactions
+    await generateAIInsights(user_id);
+    
+    res.json({
+      success: true,
+      message: 'TD data synced for AI CFO testing',
+      user_id: user_id,
+      transactions_count: parseInt(transactionCount.rows[0].count),
+      insights_generated: true
+    });
+    
+  } catch (error) {
+    console.error('❌ TD sync for user error:', error);
+    res.status(500).json({
+      error: 'Failed to sync TD data for user',
+      details: error.message
+    });
+  }
+});
+
 // Get Connected Accounts
 app.get('/api/plaid/accounts', authenticateToken, async (req, res) => {
   try {
