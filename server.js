@@ -2614,13 +2614,14 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
     const userId = 'test-user-123';
     console.log('🔧 Creating link token for user:', userId);
 
-    // Minimal link token request - try with auth product
+    // Link token request - back to original working config
     const linkTokenRequest = {
       user: { client_user_id: userId },
       client_name: 'North',
-      products: ['auth'], // Try auth instead of transactions
-      country_codes: ['US'],
-      language: 'en'
+      products: ['transactions'], // Back to transactions like yesterday
+      country_codes: ['CA'], // Back to Canada like your original app
+      language: 'en',
+      android_package_name: req.body.android_package_name || 'com.north.mobile'
     };
 
     console.log('🔧 Link token request:', JSON.stringify(linkTokenRequest));
