@@ -8,13 +8,7 @@ const jwt = require('jsonwebtoken');
 const { Configuration, PlaidApi, PlaidEnvironments } = require('plaid');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Load .env file (always load in development, skip in production)
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config();
-} else if (!process.env.NODE_ENV) {
-  // If NODE_ENV is not set, assume development and load .env
-  require('dotenv').config();
-}
+// Environment variables are loaded from Railway deployment
 
 // Plaid configuration
 const PLAID_CLIENT_ID = process.env.PLAID_CLIENT_ID;
@@ -2602,19 +2596,18 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
   try {
     const userId = 'test-user-123'; // Use test user for now
 
-    // Create link token request - force full UI experience
+    // Create link token request - configured for Canada
     const linkTokenRequest = {
       user: {
         client_user_id: userId
       },
       client_name: 'North',
       products: ['transactions'],
-      country_codes: ['US', 'CA'],
+      country_codes: ['US'], // Temporarily test with US to isolate Canada issue
       language: 'en',
-      android_package_name: 'com.north.mobile',
-      // Force full institution selection experience
-      webhook: `https://${process.env.RAILWAY_STATIC_URL || 'north-api-clean-production.up.railway.app'}/webhooks/plaid`,
-      link_customization_name: null // Use default UI
+      // Support both debug and release package names
+      android_package_name: req.body.android_package_name || 'com.north.mobile'
+      // Removed webhook and other optional parameters that might cause issues
     };
 
     const response = await plaidClient.linkTokenCreate(linkTokenRequest);
