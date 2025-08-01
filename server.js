@@ -2597,23 +2597,55 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
 
 // Plaid Integration Endpoints
 
-// Create Plaid Link Token - simplified for debugging
+// Create Plaid Link Token - with comprehensive error handling
 app.post('/api/plaid/create-link-token', async (req, res) => {
+  console.log('🔗 Link token endpoint called');
+  
   try {
-    console.log('🔗 Creating link token...');
+    // Check if Plaid client is initialized
+    if (!plaidClient) {
+      console.error('❌ Plaid client not initialized');
+      return res.status(500).json({ 
+        error: 'Plaid client not initialized',
+        plaid_configured: false
+      });
+    }
+
+    const userId = 'test-user-123';
+    console.log('🔧 Creating link token for user:', userId);
+
+    // Minimal link token request
+    const linkTokenRequest = {
+      user: { client_user_id: userId },
+      client_name: 'North',
+      products: ['transactions'],
+      country_codes: ['US'],
+      language: 'en'
+    };
+
+    console.log('🔧 Link token request:', JSON.stringify(linkTokenRequest));
+
+    const response = await plaidClient.linkTokenCreate(linkTokenRequest);
+    const linkToken = response.data.link_token;
+
+    console.log('✅ Link token created successfully');
     
-    // Simple response first to test if endpoint works
     res.json({
-      link_token: 'test-token-' + Date.now(),
-      expiration: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
-      debug: 'Simplified endpoint for testing'
+      link_token: linkToken,
+      expiration: response.data.expiration
     });
     
   } catch (error) {
-    console.error('❌ Simplified endpoint error:', error);
+    console.error('❌ Link token creation failed:', error.message);
+    console.error('🔍 Error details:', {
+      status: error.response?.status,
+      data: error.response?.data
+    });
+    
     res.status(500).json({ 
-      error: 'Simplified endpoint failed',
-      details: error.message
+      error: 'Failed to create link token',
+      details: error.message,
+      plaid_configured: !!(PLAID_CLIENT_ID && PLAID_SECRET)
     });
   }
 });
