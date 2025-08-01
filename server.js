@@ -2614,11 +2614,11 @@ app.post('/api/plaid/create-link-token', async (req, res) => {
     const userId = 'test-user-123';
     console.log('🔧 Creating link token for user:', userId);
 
-    // Minimal link token request
+    // Minimal link token request - try with auth product
     const linkTokenRequest = {
       user: { client_user_id: userId },
       client_name: 'North',
-      products: ['transactions'],
+      products: ['auth'], // Try auth instead of transactions
       country_codes: ['US'],
       language: 'en'
     };
