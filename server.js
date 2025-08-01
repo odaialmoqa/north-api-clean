@@ -327,6 +327,88 @@ app.get('/debug/plaid', (req, res) => {
   });
 });
 
+// Debug database schema and test transaction insertion
+app.get('/debug/database', async (req, res) => {
+  try {
+    // Check if transactions table exists
+    const tableCheck = await pool.query(`
+      SELECT table_name, column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'transactions'
+      ORDER BY ordinal_position
+    `);
+    
+    // Check if users table exists
+    const usersCheck = await pool.query(`
+      SELECT table_name, column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'users'
+      ORDER BY ordinal_position
+    `);
+    
+    // Check if the specific user exists
+    const userExists = await pool.query(
+      'SELECT id, email FROM users WHERE id = $1',
+      ['144d3d4e-29f3-4fc8-8932-b3c92d93bda2']
+    );
+    
+    // Test simple transaction insertion
+    let insertTest = null;
+    try {
+      const testTransactionId = `test_${Date.now()}`;
+      await pool.query(`
+        INSERT INTO transactions (
+          user_id, plaid_transaction_id, account_id, amount, description,
+          category, subcategory, date, merchant_name
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [
+        '144d3d4e-29f3-4fc8-8932-b3c92d93bda2',
+        testTransactionId,
+        'test_account',
+        -50.00,
+        'Test Transaction',
+        null, // Simple null category
+        null,
+        '2025-08-01',
+        'Test Merchant'
+      ]);
+      
+      // Count transactions after test insert
+      const countResult = await pool.query(
+        'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+        ['144d3d4e-29f3-4fc8-8932-b3c92d93bda2']
+      );
+      
+      insertTest = {
+        success: true,
+        test_transaction_id: testTransactionId,
+        total_transactions: parseInt(countResult.rows[0].count)
+      };
+      
+    } catch (insertError) {
+      insertTest = {
+        success: false,
+        error: insertError.message
+      };
+    }
+    
+    res.json({
+      success: true,
+      transactions_table: tableCheck.rows,
+      users_table: usersCheck.rows,
+      test_user_exists: userExists.rows.length > 0,
+      test_user_data: userExists.rows[0] || null,
+      insert_test: insertTest
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      error: 'Database debug failed',
+      details: error.message
+    });
+  }
+});
+
 // Debug endpoint for testing Plaid errors directly
 app.get('/debug/plaid-error', async (req, res) => {
   try {
@@ -912,12 +994,25 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
     // Redirect to the new AI CFO Brain endpoint logic
     // This ensures backward compatibility while using the new Gemini-powered system
     const userId = req.user.userId;
+    
+    // Store user message
+    await storeChatMessage(userId, message, true);
 
     // Check if Gemini is available
     if (!genAI) {
       return res.status(503).json({
         error: 'The AI assistant is currently unavailable. Please try again later.'
       });
+    }
+    
+    // Generate dynamic goals if user doesn't have any
+    const existingGoals = await pool.query(
+      'SELECT COUNT(*) as count FROM dynamic_goals WHERE user_id = $1',
+      [userId]
+    );
+    
+    if (parseInt(existingGoals.rows[0].count) === 0) {
+      await generateDynamicGoals(userId);
     }
 
     // Check if user has transaction data (either from plaid_items or direct transactions)
@@ -926,9 +1021,9 @@ app.post('/api/ai/chat', authenticateToken, async (req, res) => {
     let plaidItemsResult = { rows: [] };
 
     try {
-      // Check for connected accounts
+      // Check for connected accounts (support multiple accounts)
       plaidItemsResult = await pool.query(
-        'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1',
+        'SELECT access_token, item_id, institution_name FROM plaid_items WHERE user_id = $1 ORDER BY updated_at DESC',
         [userId]
       );
       hasConnectedAccounts = plaidItemsResult.rows.length > 0;
@@ -1189,6 +1284,9 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
       const response = await result.response;
       const aiResponse = response.text();
 
+      // Store AI response
+      await storeChatMessage(userId, aiResponse, false);
+      
       // Return in the format expected by the mobile app
       res.json({
         response: aiResponse
@@ -2035,6 +2133,104 @@ app.get('/api/memory/insights', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch insights' });
   }
 });
+
+// Store chat message in database
+async function storeChatMessage(userId, message, isFromUser, sessionId = null) {
+  try {
+    const result = await pool.query(`
+      INSERT INTO chat_messages (user_id, session_id, message, is_from_user, created_at)
+      VALUES ($1, $2, $3, $4, NOW())
+      RETURNING id
+    `, [userId, sessionId || `session_${Date.now()}`, message, isFromUser]);
+    
+    return result.rows[0].id;
+  } catch (error) {
+    console.error('Error storing chat message:', error);
+    return null;
+  }
+}
+
+// Generate dynamic goals based on transaction analysis
+async function generateDynamicGoals(userId) {
+  try {
+    console.log('🎯 Generating dynamic goals for user:', userId);
+    
+    // Get user's transactions for analysis
+    const transactions = await pool.query(`
+      SELECT * FROM transactions 
+      WHERE user_id = $1 
+      ORDER BY date DESC 
+      LIMIT 50
+    `, [userId]);
+    
+    if (transactions.rows.length === 0) {
+      console.log('No transactions found for goal generation');
+      return;
+    }
+    
+    // Analyze spending patterns
+    const categorySpending = {};
+    let totalSpending = 0;
+    
+    transactions.rows.forEach(tx => {
+      const category = tx.category?.[0] || 'Other';
+      const amount = Math.abs(tx.amount);
+      categorySpending[category] = (categorySpending[category] || 0) + amount;
+      totalSpending += amount;
+    });
+    
+    // Generate goals based on analysis
+    const goals = [];
+    
+    // Find largest spending category for optimization goal
+    const largestCategory = Object.entries(categorySpending)
+      .sort(([,a], [,b]) => b - a)[0];
+    
+    if (largestCategory && largestCategory[1] > totalSpending * 0.3) {
+      goals.push({
+        title: `Optimize ${largestCategory[0]} Spending`,
+        description: `Your ${largestCategory[0]} spending is $${largestCategory[1].toFixed(2)} - let's work on reducing this major expense`,
+        target_amount: largestCategory[1] * 0.8, // 20% reduction goal
+        current_amount: 0,
+        priority: 'high',
+        category: 'spending_optimization'
+      });
+    }
+    
+    // Emergency fund goal based on spending patterns
+    const monthlySpending = totalSpending; // Approximate monthly spending
+    goals.push({
+      title: 'Emergency Fund',
+      description: `Build 3-6 months of expenses ($${(monthlySpending * 3).toFixed(2)}) for financial security`,
+      target_amount: monthlySpending * 3,
+      current_amount: 0,
+      priority: 'high',
+      category: 'emergency_fund'
+    });
+    
+    // Store goals in database
+    for (const goal of goals) {
+      await pool.query(`
+        INSERT INTO dynamic_goals (
+          user_id, title, description, target_amount, current_amount, 
+          priority, category, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        ON CONFLICT (user_id, title) DO UPDATE SET
+          description = EXCLUDED.description,
+          target_amount = EXCLUDED.target_amount,
+          updated_at = NOW()
+      `, [
+        userId, goal.title, goal.description, goal.target_amount,
+        goal.current_amount, goal.priority, goal.category
+      ]);
+    }
+    
+    console.log(`✅ Generated ${goals.length} dynamic goals for user ${userId}`);
+    
+  } catch (error) {
+    console.error('Error generating dynamic goals:', error);
+  }
+}
 
 // Enhanced AI Chat endpoint with memory integration
 app.post('/api/ai/chat-with-memory', authenticateToken, async (req, res) => {
@@ -2948,6 +3144,111 @@ app.get('/api/debug/td-sync', async (req, res) => {
   }
 });
 
+// Debug: Simple check of plaid_items table
+app.get('/api/debug/plaid-items/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('🔍 Checking plaid_items table for user:', userId);
+    
+    // Simple query to see what's in the database
+    const result = await pool.query(
+      'SELECT item_id, institution_name, updated_at FROM plaid_items WHERE user_id = $1 ORDER BY updated_at DESC',
+      [userId]
+    );
+    
+    console.log(`📊 Found ${result.rows.length} items in plaid_items table`);
+    
+    res.json({
+      success: true,
+      user_id: userId,
+      plaid_items_count: result.rows.length,
+      items: result.rows.map(row => ({
+        item_id: row.item_id,
+        institution_name: row.institution_name,
+        connected_at: row.updated_at
+      }))
+    });
+    
+  } catch (error) {
+    console.error('❌ Debug plaid items error:', error);
+    res.status(500).json({
+      error: 'Failed to check plaid items',
+      details: error.message
+    });
+  }
+});
+
+// Debug: Check all connected accounts for a user
+app.get('/api/debug/user-accounts/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    console.log('🔍 Checking all connected accounts for user:', userId);
+    
+    // Get all plaid items for the user
+    const plaidItemsResult = await pool.query(
+      'SELECT item_id, institution_name, access_token, updated_at FROM plaid_items WHERE user_id = $1 ORDER BY updated_at DESC',
+      [userId]
+    );
+    
+    console.log(`📊 Found ${plaidItemsResult.rows.length} connected accounts`);
+    
+    const accountDetails = [];
+    
+    for (const item of plaidItemsResult.rows) {
+      try {
+        // Get account info from Plaid
+        const accountsResponse = await plaidClient.accountsGet({
+          access_token: item.access_token
+        });
+        
+        accountDetails.push({
+          item_id: item.item_id,
+          institution_name: item.institution_name,
+          connected_at: item.updated_at,
+          accounts: accountsResponse.data.accounts.map(acc => ({
+            account_id: acc.account_id,
+            name: acc.name,
+            type: acc.type,
+            subtype: acc.subtype,
+            balance: acc.balances.current
+          }))
+        });
+        
+      } catch (error) {
+        accountDetails.push({
+          item_id: item.item_id,
+          institution_name: item.institution_name,
+          connected_at: item.updated_at,
+          error: error.message
+        });
+      }
+    }
+    
+    // Get transaction count
+    const transactionCount = await pool.query(
+      'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+      [userId]
+    );
+    
+    res.json({
+      success: true,
+      user_id: userId,
+      connected_accounts: plaidItemsResult.rows.length,
+      account_details: accountDetails,
+      total_transactions: parseInt(transactionCount.rows[0].count)
+    });
+    
+  } catch (error) {
+    console.error('❌ Debug user accounts error:', error);
+    res.status(500).json({
+      error: 'Failed to check user accounts',
+      details: error.message
+    });
+  }
+});
+
 // Debug: Sync TD data for a specific user (for AI CFO testing)
 app.post('/api/debug/sync-td-for-user', async (req, res) => {
   try {
@@ -2958,23 +3259,48 @@ app.post('/api/debug/sync-td-for-user', async (req, res) => {
     // Your actual TD Canada Trust access token
     const accessToken = 'access-production-84245284-d060-4fe8-9d13-1e932d70b124';
     
-    // Use the fixed fetchAndStoreTransactions function
-    await fetchAndStoreTransactions(user_id, accessToken);
-    
-    // Count stored transactions
-    const transactionCount = await pool.query(
+    // Count transactions before sync
+    const beforeCount = await pool.query(
       'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
       [user_id]
     );
+    console.log(`📊 Transactions before sync: ${beforeCount.rows[0].count}`);
+    
+    // Use the fixed fetchAndStoreTransactions function with detailed error handling
+    try {
+      console.log('🚀 Starting fetchAndStoreTransactions...');
+      await fetchAndStoreTransactions(user_id, accessToken);
+      console.log('✅ fetchAndStoreTransactions completed successfully');
+    } catch (syncError) {
+      console.error('❌ fetchAndStoreTransactions failed:', syncError);
+      console.error('❌ Sync error details:', syncError.message);
+      console.error('❌ Sync error stack:', syncError.stack);
+      throw syncError; // Re-throw to be caught by outer try-catch
+    }
+    
+    // Count stored transactions after sync
+    const afterCount = await pool.query(
+      'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+      [user_id]
+    );
+    console.log(`📊 Transactions after sync: ${afterCount.rows[0].count}`);
     
     // Generate AI insights after storing transactions
-    await generateAIInsights(user_id);
+    try {
+      await generateAIInsights(user_id);
+      console.log('✅ AI insights generated successfully');
+    } catch (insightError) {
+      console.error('⚠️ AI insights generation failed:', insightError.message);
+      // Don't fail the whole request if insights fail
+    }
     
     res.json({
       success: true,
       message: 'TD data synced for AI CFO testing',
       user_id: user_id,
-      transactions_count: parseInt(transactionCount.rows[0].count),
+      transactions_before: parseInt(beforeCount.rows[0].count),
+      transactions_after: parseInt(afterCount.rows[0].count),
+      transactions_count: parseInt(afterCount.rows[0].count),
       insights_generated: true
     });
     
@@ -2982,41 +3308,72 @@ app.post('/api/debug/sync-td-for-user', async (req, res) => {
     console.error('❌ TD sync for user error:', error);
     res.status(500).json({
       error: 'Failed to sync TD data for user',
-      details: error.message
+      details: error.message,
+      stack: error.stack?.split('\n').slice(0, 10) // First 10 lines of stack trace
     });
   }
 });
 
-// Get Connected Accounts
+// Get Connected Accounts (Real Implementation)
 app.get('/api/plaid/accounts', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Mock connected accounts data
-    const accounts = [
-      {
-        id: `acc_${userId}_1`,
-        name: 'TD Checking',
-        type: 'depository',
-        subtype: 'checking',
-        balance: 2458.32,
-        institutionName: 'TD Bank',
-        lastSyncTime: Date.now(),
-        connectionStatus: 'HEALTHY'
-      },
-      {
-        id: `acc_${userId}_2`,
-        name: 'TD Savings',
-        type: 'depository',
-        subtype: 'savings',
-        balance: 12042.87,
-        institutionName: 'TD Bank',
-        lastSyncTime: Date.now(),
-        connectionStatus: 'HEALTHY'
-      }
-    ];
+    // Get all connected accounts from database
+    const plaidItemsResult = await pool.query(
+      'SELECT item_id, institution_name, access_token, updated_at FROM plaid_items WHERE user_id = $1 ORDER BY updated_at DESC',
+      [userId]
+    );
 
+    if (plaidItemsResult.rows.length === 0) {
+      return res.json({ accounts: [] });
+    }
+
+    const accounts = [];
+    
+    // Get account details from each connected institution
+    for (const item of plaidItemsResult.rows) {
+      try {
+        const accountsRequest = {
+          access_token: item.access_token,
+        };
+
+        const accountsResponse = await plaidClient.accountsGet(accountsRequest);
+        
+        accountsResponse.data.accounts.forEach(account => {
+          accounts.push({
+            id: account.account_id,
+            name: account.name,
+            type: account.type,
+            subtype: account.subtype,
+            balance: account.balances.current || 0,
+            institutionName: item.institution_name,
+            itemId: item.item_id,
+            lastSyncTime: new Date(item.updated_at).getTime(),
+            connectionStatus: 'HEALTHY'
+          });
+        });
+        
+      } catch (accountError) {
+        console.error(`Failed to get accounts for ${item.institution_name}:`, accountError.message);
+        // Add a placeholder for failed accounts
+        accounts.push({
+          id: `error_${item.item_id}`,
+          name: 'Account Error',
+          type: 'unknown',
+          subtype: 'unknown',
+          balance: 0,
+          institutionName: item.institution_name,
+          itemId: item.item_id,
+          lastSyncTime: new Date(item.updated_at).getTime(),
+          connectionStatus: 'ERROR'
+        });
+      }
+    }
+
+    console.log(`✅ Retrieved ${accounts.length} accounts from ${plaidItemsResult.rows.length} institutions`);
     res.json({ accounts });
+    
   } catch (error) {
     console.error('Get accounts error:', error);
     res.status(500).json({ error: 'Failed to fetch accounts' });
@@ -3029,23 +3386,51 @@ app.post('/api/plaid/sync-transactions', authenticateToken, async (req, res) => 
     const { accountId, userId: requestUserId } = req.body;
     const userId = requestUserId || req.user.userId;
 
-    // Get user's Plaid access token from database
+    // Get ALL user's Plaid access tokens from database (support multiple accounts)
     const result = await pool.query(
-      'SELECT access_token, institution_name FROM plaid_items WHERE user_id = $1 LIMIT 1',
+      'SELECT access_token, institution_name, item_id FROM plaid_items WHERE user_id = $1',
       [userId]
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'No Plaid account found for user' });
+      return res.status(404).json({ error: 'No Plaid accounts found for user' });
     }
 
-    const accessToken = result.rows[0].access_token;
-    const institutionName = result.rows[0].institution_name;
+    console.log(`🔄 Syncing transactions for user ${userId} from ${result.rows.length} connected accounts`);
 
-    console.log(`🔄 Syncing transactions for user ${userId} with ${institutionName}`);
-
-    // Fetch and store transactions using real Plaid data
-    await fetchAndStoreTransactions(userId, accessToken);
+    let totalTransactionsSynced = 0;
+    
+    // Sync transactions from ALL connected accounts
+    for (const account of result.rows) {
+      const { access_token, institution_name, item_id } = account;
+      
+      console.log(`🏦 Syncing transactions from ${institution_name} (${item_id})`);
+      
+      try {
+        const transactionsBefore = await pool.query(
+          'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+          [userId]
+        );
+        
+        await fetchAndStoreTransactions(userId, access_token);
+        
+        const transactionsAfter = await pool.query(
+          'SELECT COUNT(*) as count FROM transactions WHERE user_id = $1',
+          [userId]
+        );
+        
+        const syncedFromThisAccount = parseInt(transactionsAfter.rows[0].count) - parseInt(transactionsBefore.rows[0].count);
+        totalTransactionsSynced += syncedFromThisAccount;
+        
+        console.log(`✅ Synced ${syncedFromThisAccount} transactions from ${institution_name}`);
+        
+      } catch (accountSyncError) {
+        console.error(`❌ Failed to sync transactions from ${institution_name}:`, accountSyncError.message);
+        // Continue with other accounts even if one fails
+      }
+    }
+    
+    console.log(`✅ Total transactions synced from all accounts: ${totalTransactionsSynced}`);
 
     // Generate AI insights after sync
     try {
@@ -3434,6 +3819,12 @@ async function fetchAndStoreTransactions(userId, accessToken) {
       try {
         console.log(`🔧 Storing transaction: ${txn.name} - $${Math.abs(txn.amount)}`);
         
+        // Fix category handling - convert array to PostgreSQL array format
+        const categoryArray = txn.category && Array.isArray(txn.category) ? txn.category : [];
+        const categoryString = categoryArray.length > 0 ? `{${categoryArray.map(c => `"${c}"`).join(',')}}` : null;
+        
+        console.log(`🔧 Transaction details: ${txn.name}, Amount: ${txn.amount}, Category: ${JSON.stringify(txn.category)}`);
+        
         await pool.query(`
           INSERT INTO transactions (
             user_id, plaid_transaction_id, account_id, amount, description,
@@ -3449,7 +3840,7 @@ async function fetchAndStoreTransactions(userId, accessToken) {
           txn.account_id,
           -txn.amount, // Plaid uses positive for outflows, we use negative
           txn.name,
-          txn.category || [],
+          categoryString, // Fixed category handling
           txn.category?.[1] || null,
           txn.date,
           txn.merchant_name
