@@ -282,15 +282,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rate limiting - configured for Railway proxy
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  trustProxy: true, // Trust Railway's proxy headers
-  standardHeaders: true,
-  legacyHeaders: false
-});
-app.use('/api/', limiter);
+// Rate limiting - temporarily disabled for debugging
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: 100,
+//   trustProxy: true, // Trust Railway's proxy headers
+//   standardHeaders: true,
+//   legacyHeaders: false
+// });
+// app.use('/api/', limiter);
 
 // Debug endpoint
 app.get('/debug', (req, res) => {
