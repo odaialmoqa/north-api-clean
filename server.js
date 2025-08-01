@@ -2597,48 +2597,23 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
 
 // Plaid Integration Endpoints
 
-// Create Plaid Link Token (temporarily allowing unauthenticated access for testing)
+// Create Plaid Link Token - simplified for debugging
 app.post('/api/plaid/create-link-token', async (req, res) => {
   try {
-    const userId = 'test-user-123'; // Use test user for now
-
-    // Create link token request - configured for Canada
-    const linkTokenRequest = {
-      user: {
-        client_user_id: userId
-      },
-      client_name: 'North',
-      products: ['transactions'],
-      country_codes: ['US'], // Temporarily test with US to isolate Canada issue
-      language: 'en',
-      // Support both debug and release package names
-      android_package_name: req.body.android_package_name || 'com.north.mobile'
-      // Removed webhook and other optional parameters that might cause issues
-    };
-
-    const response = await plaidClient.linkTokenCreate(linkTokenRequest);
-    const linkToken = response.data.link_token;
-
+    console.log('🔗 Creating link token...');
+    
+    // Simple response first to test if endpoint works
     res.json({
-      link_token: linkToken,
-      expiration: response.data.expiration
+      link_token: 'test-token-' + Date.now(),
+      expiration: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+      debug: 'Simplified endpoint for testing'
     });
+    
   } catch (error) {
-    console.error('❌ Create link token error:', error);
-    console.error('🔍 Link token error details:', {
-      message: error.message,
-      code: error.code,
-      status: error.response?.status,
-      plaid_response: error.response?.data,
-      plaid_client_id_exists: !!PLAID_CLIENT_ID,
-      plaid_secret_exists: !!PLAID_SECRET,
-      plaid_env: PLAID_ENV,
-      user_id: userId
-    });
+    console.error('❌ Simplified endpoint error:', error);
     res.status(500).json({ 
-      error: 'Failed to create link token',
-      details: error.message,
-      plaid_configured: !!(PLAID_CLIENT_ID && PLAID_SECRET)
+      error: 'Simplified endpoint failed',
+      details: error.message
     });
   }
 });
