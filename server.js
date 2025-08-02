@@ -246,7 +246,7 @@ async function initDatabase() {
       );
     `);
 
-    // Create investments table for Plaid investment data
+    // Create investments table for Plaid investment holdings data
     await pool.query(`
       CREATE TABLE IF NOT EXISTS investments (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -267,6 +267,26 @@ async function initDatabase() {
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW(),
         UNIQUE(user_id, plaid_account_id, plaid_security_id)
+      );
+    `);
+
+    // Create assets table for investment accounts (TFSA, RRSP, etc.)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS assets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plaid_account_id VARCHAR(255) NOT NULL,
+        account_name VARCHAR(255) NOT NULL,
+        account_type VARCHAR(100) NOT NULL,
+        account_subtype VARCHAR(100),
+        current_balance DECIMAL(15,2),
+        available_balance DECIMAL(15,2),
+        currency VARCHAR(10) DEFAULT 'CAD',
+        institution_name VARCHAR(255),
+        is_investment_account BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, plaid_account_id)
       );
     `);
 
@@ -472,6 +492,23 @@ app.get('/debug/investments', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: 'Failed to fetch investments',
+      details: error.message
+    });
+  }
+});
+
+// Debug endpoint to check assets table
+app.get('/debug/assets', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM assets ORDER BY created_at DESC LIMIT 50');
+    res.json({
+      success: true,
+      count: result.rows.length,
+      assets: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch assets',
       details: error.message
     });
   }
@@ -4041,7 +4078,18 @@ async function fetchAndStoreAllPlaidData(userId, accessToken) {
     results.transactions.error = error.message;
   }
 
-  // 2. Fetch Investments
+  // 2. Fetch Assets (TFSA, RRSP, checking, savings, etc.)
+  try {
+    console.log('💰 Fetching assets...');
+    const assetCount = await fetchAndStoreAssets(userId, accessToken);
+    results.assets = { success: true, count: assetCount };
+    console.log(`✅ Assets sync completed (${assetCount} accounts)`);
+  } catch (error) {
+    console.warn('⚠️ Assets sync failed:', error.message);
+    results.assets = { success: false, error: error.message };
+  }
+
+  // 3. Fetch Investments (detailed holdings)
   try {
     console.log('📈 Fetching investments...');
     const investmentCount = await fetchAndStoreInvestments(userId, accessToken);
@@ -4053,7 +4101,7 @@ async function fetchAndStoreAllPlaidData(userId, accessToken) {
     results.investments.error = error.message;
   }
 
-  // 3. Fetch Liabilities
+  // 4. Fetch Liabilities (ONLY true debts)
   try {
     console.log('💳 Fetching liabilities...');
     const liabilityCount = await fetchAndStoreLiabilities(userId, accessToken);
@@ -4152,19 +4200,146 @@ async function fetchAndStoreInvestments(userId, accessToken) {
   }
 }
 
-// Fetch and store liability accounts
+// Fetch and store asset accounts (TFSA, RRSP, checking, savings, etc.)
+async function fetchAndStoreAssets(userId, accessToken) {
+  try {
+    console.log('💰 Fetching asset accounts for user:', userId);
+
+    const accountsRequest = {
+      access_token: accessToken,
+    };
+
+    console.log('🔄 Calling Plaid accountsGet API for assets...');
+    const accountsResponse = await plaidClient.accountsGet(accountsRequest);
+    const accounts = accountsResponse.data.accounts;
+
+    console.log(`📊 Processing ${accounts.length} accounts for asset classification`);
+
+    if (accounts.length === 0) {
+      console.log('⚠️ No accounts found');
+      return 0;
+    }
+
+    let storedCount = 0;
+    
+    for (const account of accounts) {
+      try {
+        // Only store accounts that are actually assets (positive value accounts)
+        const isAssetAccount = ['depository', 'investment', 'brokerage'].includes(account.type);
+        
+        if (isAssetAccount) {
+          const balance = account.balances.current || 0;
+          const availableBalance = account.balances.available || balance;
+          
+          console.log(`💰 Storing asset: ${account.name} - $${balance} (${account.type}/${account.subtype})`);
+          
+          await pool.query(`
+            INSERT INTO assets (
+              user_id, plaid_account_id, account_name, account_type, account_subtype,
+              current_balance, available_balance, currency, institution_name,
+              is_investment_account, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+            ON CONFLICT (user_id, plaid_account_id) 
+            DO UPDATE SET
+              current_balance = EXCLUDED.current_balance,
+              available_balance = EXCLUDED.available_balance,
+              updated_at = NOW()
+          `, [
+            userId,
+            account.account_id,
+            account.name,
+            account.type,
+            account.subtype || 'unknown',
+            balance,
+            availableBalance,
+            account.balances.iso_currency_code || 'CAD',
+            account.institution_name || 'Unknown',
+            ['investment', 'brokerage'].includes(account.type)
+          ]);
+          
+          storedCount++;
+          console.log(`✅ Asset stored successfully (${storedCount})`);
+        }
+        
+      } catch (assetError) {
+        console.error(`❌ Failed to store asset ${account.account_id}:`, assetError.message);
+      }
+    }
+    
+    console.log(`✅ Successfully stored ${storedCount} asset accounts`);
+    return storedCount;
+
+  } catch (error) {
+    console.error('❌ Error fetching assets:', error);
+    throw error;
+  }
+}
+
+// Fetch and store liability accounts (ONLY true liabilities)
 async function fetchAndStoreLiabilities(userId, accessToken) {
   try {
     console.log('💳 Fetching liabilities for user:', userId);
 
-    const liabilitiesRequest = {
+    const accountsRequest = {
       access_token: accessToken,
     };
 
-    console.log('🔄 Calling Plaid liabilitiesGet API...');
-    const liabilitiesResponse = await plaidClient.liabilitiesGet(liabilitiesRequest);
-    const accounts = liabilitiesResponse.data.accounts;
-    const liabilities = liabilitiesResponse.data.liabilities;
+    console.log('🔄 Calling Plaid accountsGet API for liabilities...');
+    const accountsResponse = await plaidClient.accountsGet(accountsRequest);
+    const accounts = accountsResponse.data.accounts;
+
+    console.log(`📊 Processing ${accounts.length} accounts for liability classification`);
+
+    if (accounts.length === 0) {
+      console.log('⚠️ No accounts found');
+      return 0;
+    }
+
+    let storedCount = 0;
+    
+    for (const account of accounts) {
+      try {
+        // Only store accounts that are actually liabilities (debt accounts)
+        const isLiabilityAccount = ['credit', 'loan'].includes(account.type);
+        
+        if (isLiabilityAccount) {
+          const balance = Math.abs(account.balances.current || 0);
+          
+          console.log(`💳 Storing liability: ${account.name} - $${balance} (${account.type}/${account.subtype})`);
+          
+          await pool.query(`
+            INSERT INTO liabilities (
+              user_id, plaid_account_id, liability_type, current_balance,
+              created_at, updated_at
+            ) VALUES ($1, $2, $3, $4, NOW(), NOW())
+            ON CONFLICT (user_id, plaid_account_id) 
+            DO UPDATE SET
+              current_balance = EXCLUDED.current_balance,
+              updated_at = NOW()
+          `, [
+            userId,
+            account.account_id,
+            account.subtype || account.type,
+            balance
+          ]);
+          
+          storedCount++;
+          console.log(`✅ Liability stored successfully (${storedCount})`);
+        }
+        
+      } catch (liabilityError) {
+        console.error(`❌ Failed to store liability ${account.account_id}:`, liabilityError.message);
+      }
+    }
+    
+    console.log(`✅ Successfully stored ${storedCount} liability accounts`);
+    return storedCount;
+
+  } catch (error) {
+    console.error('❌ Error fetching liabilities:', error);
+    throw error;
+  }
+}
 
     console.log(`📊 Processing ${accounts.length} liability accounts`);
 
