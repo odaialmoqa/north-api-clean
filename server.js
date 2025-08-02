@@ -460,6 +460,40 @@ app.get('/debug/database', async (req, res) => {
   }
 });
 
+// Debug endpoint to check investments table
+app.get('/debug/investments', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM investments ORDER BY created_at DESC LIMIT 50');
+    res.json({
+      success: true,
+      count: result.rows.length,
+      investments: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch investments',
+      details: error.message
+    });
+  }
+});
+
+// Debug endpoint to check liabilities table
+app.get('/debug/liabilities', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM liabilities ORDER BY created_at DESC LIMIT 50');
+    res.json({
+      success: true,
+      count: result.rows.length,
+      liabilities: result.rows
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to fetch liabilities',
+      details: error.message
+    });
+  }
+});
+
 // Debug endpoint for testing Plaid errors directly
 app.get('/debug/plaid-error', async (req, res) => {
   try {
