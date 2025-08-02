@@ -3061,6 +3061,71 @@ app.post('/api/plaid/exchange-public-token', authenticateToken, async (req, res)
   }
 });
 
+// Manual Comprehensive Sync Endpoint (for debugging)
+app.post('/api/plaid/comprehensive-sync', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    console.log('🔄 Manual comprehensive sync requested for user:', userId);
+    
+    // Get all user's access tokens
+    const plaidItemsResult = await pool.query(
+      'SELECT access_token, institution_name, item_id FROM plaid_items WHERE user_id = $1',
+      [userId]
+    );
+    
+    if (plaidItemsResult.rows.length === 0) {
+      return res.status(400).json({
+        error: 'No connected accounts found',
+        message: 'Please connect at least one account first'
+      });
+    }
+    
+    console.log(`📊 Found ${plaidItemsResult.rows.length} connected institutions`);
+    
+    let totalResults = {
+      transactions: 0,
+      investments: 0,
+      liabilities: 0,
+      institutions: plaidItemsResult.rows.length
+    };
+    
+    // Run comprehensive sync for each connected institution
+    for (const plaidItem of plaidItemsResult.rows) {
+      console.log(`🔄 Syncing data for ${plaidItem.institution_name}...`);
+      
+      try {
+        const syncResults = await fetchAndStoreAllPlaidData(userId, plaidItem.access_token);
+        
+        totalResults.transactions += syncResults.transactions || 0;
+        totalResults.investments += syncResults.investments || 0;
+        totalResults.liabilities += syncResults.liabilities || 0;
+        
+        console.log(`✅ Sync completed for ${plaidItem.institution_name}:`, syncResults);
+        
+      } catch (syncError) {
+        console.error(`❌ Sync failed for ${plaidItem.institution_name}:`, syncError.message);
+      }
+    }
+    
+    console.log('✅ Manual comprehensive sync completed:', totalResults);
+    
+    res.json({
+      success: true,
+      message: 'Comprehensive sync completed',
+      results: totalResults,
+      institutions_synced: plaidItemsResult.rows.map(item => item.institution_name)
+    });
+    
+  } catch (error) {
+    console.error('❌ Manual comprehensive sync error:', error);
+    res.status(500).json({
+      error: 'Comprehensive sync failed',
+      details: error.message
+    });
+  }
+});
+
 // Manual Transaction Sync Endpoint (for debugging)
 app.post('/api/plaid/manual-sync', authenticateToken, async (req, res) => {
   try {
