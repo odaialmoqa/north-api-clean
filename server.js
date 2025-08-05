@@ -3360,6 +3360,13 @@ async function updateSpendingPatterns(userId) {
             user_id, category, period_type, period_start, period_end,
             total_amount, transaction_count, average_transaction
           ) VALUES ($1, $2, 'monthly', $3, $4, $5, $6, $7)
+          ON CONFLICT (user_id, category, period_type, period_start) 
+          DO UPDATE SET
+            total_amount = EXCLUDED.total_amount,
+            transaction_count = EXCLUDED.transaction_count,
+            average_transaction = EXCLUDED.average_transaction,
+            period_end = EXCLUDED.period_end,
+            created_at = NOW()
         `, [
           userId,
           pattern.main_category,
