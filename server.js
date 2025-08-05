@@ -249,6 +249,46 @@ async function initDatabase() {
       );
     `);
 
+    // Create assets table for investment and asset tracking
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS assets (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        account_id VARCHAR(255) NOT NULL,
+        plaid_account_id VARCHAR(255),
+        asset_type VARCHAR(100) NOT NULL,
+        asset_name VARCHAR(255) NOT NULL,
+        symbol VARCHAR(20),
+        quantity DECIMAL(15,6),
+        unit_price DECIMAL(15,2),
+        current_value DECIMAL(15,2) NOT NULL,
+        cost_basis DECIMAL(15,2),
+        institution_name VARCHAR(255),
+        last_updated TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    // Create liabilities table for debt tracking
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS liabilities (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        account_id VARCHAR(255) NOT NULL,
+        plaid_account_id VARCHAR(255),
+        liability_type VARCHAR(100) NOT NULL,
+        liability_name VARCHAR(255) NOT NULL,
+        current_balance DECIMAL(15,2) NOT NULL,
+        minimum_payment DECIMAL(15,2),
+        interest_rate DECIMAL(5,4),
+        credit_limit DECIMAL(15,2),
+        due_date DATE,
+        institution_name VARCHAR(255),
+        last_updated TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
     console.log('✅ Database tables initialized');
   } catch (error) {
     console.error('❌ Database initialization error:', error.message);
@@ -1446,7 +1486,8 @@ app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    const result = await pool.query(`
+    // First try to get existing patterns
+    let result = await pool.query(`
       SELECT category, period_start, period_end, total_amount,
              transaction_count, average_transaction, trend_direction, trend_percentage
       FROM spending_patterns 
@@ -1455,6 +1496,22 @@ app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
       LIMIT 50
     `, [userId]);
 
+    // If no patterns exist, generate them from transactions
+    if (result.rows.length === 0) {
+      console.log('🔄 No spending patterns found, generating from transactions...');
+      await updateSpendingPatterns(userId);
+      
+      // Try again after generation
+      result = await pool.query(`
+        SELECT category, period_start, period_end, total_amount,
+               transaction_count, average_transaction, trend_direction, trend_percentage
+        FROM spending_patterns 
+        WHERE user_id = $1 AND period_type = 'monthly'
+        ORDER BY period_start DESC, total_amount DESC
+        LIMIT 50
+      `, [userId]);
+    }
+
     res.json({
       success: true,
       patterns: result.rows
@@ -1462,6 +1519,35 @@ app.get('/api/spending-patterns', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Get spending patterns error:', error);
     res.status(500).json({ error: 'Failed to get spending patterns' });
+  }
+});
+
+// Manual spending pattern generation endpoint (for debugging)
+app.post('/api/spending-patterns/generate', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    console.log('🔧 Manual spending pattern generation requested for user:', userId);
+    
+    await updateSpendingPatterns(userId);
+    
+    // Get the generated patterns
+    const result = await pool.query(`
+      SELECT category, period_start, period_end, total_amount,
+             transaction_count, average_transaction
+      FROM spending_patterns 
+      WHERE user_id = $1 AND period_type = 'monthly'
+      ORDER BY period_start DESC, total_amount DESC
+    `, [userId]);
+    
+    res.json({
+      success: true,
+      message: 'Spending patterns generated successfully',
+      patterns_generated: result.rows.length,
+      patterns: result.rows
+    });
+  } catch (error) {
+    console.error('Manual spending pattern generation error:', error);
+    res.status(500).json({ error: 'Failed to generate spending patterns' });
   }
 });
 
@@ -2461,10 +2547,10 @@ ${transactionData.length > 0 ? JSON.stringify(transactionData, null, 2) : 'No tr
 
 // Plaid Integration Endpoints
 
-// Create Plaid Link Token (temporarily allowing unauthenticated access for testing)
-app.post('/api/plaid/create-link-token', async (req, res) => {
+// Create Plaid Link Token
+app.post('/api/plaid/create-link-token', authenticateToken, async (req, res) => {
   try {
-    const userId = 'test-user-123'; // Use test user for now
+    const userId = req.user.userId;
 
     // Create link token request - force full UI experience
     const linkTokenRequest = {
@@ -2659,31 +2745,56 @@ app.get('/api/plaid/accounts', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Mock connected accounts data
-    const accounts = [
-      {
-        id: `acc_${userId}_1`,
-        name: 'TD Checking',
-        type: 'depository',
-        subtype: 'checking',
-        balance: 2458.32,
-        institutionName: 'TD Bank',
-        lastSyncTime: Date.now(),
-        connectionStatus: 'HEALTHY'
-      },
-      {
-        id: `acc_${userId}_2`,
-        name: 'TD Savings',
-        type: 'depository',
-        subtype: 'savings',
-        balance: 12042.87,
-        institutionName: 'TD Bank',
-        lastSyncTime: Date.now(),
-        connectionStatus: 'HEALTHY'
-      }
-    ];
+    // Get all connected Plaid items for this user
+    const plaidItems = await pool.query(`
+      SELECT access_token, item_id, institution_id, institution_name, updated_at
+      FROM plaid_items 
+      WHERE user_id = $1
+      ORDER BY updated_at DESC
+    `, [userId]);
 
-    res.json({ accounts });
+    if (plaidItems.rows.length === 0) {
+      return res.json({ accounts: [] });
+    }
+
+    const allAccounts = [];
+
+    // Fetch accounts from each connected institution
+    for (const item of plaidItems.rows) {
+      try {
+        const accountsRequest = {
+          access_token: item.access_token,
+        };
+
+        const accountsResponse = await plaidClient.accountsGet(accountsRequest);
+        const accounts = accountsResponse.data.accounts.map(account => ({
+          id: account.account_id,
+          name: account.name,
+          officialName: account.official_name,
+          type: account.type,
+          subtype: account.subtype,
+          balance: account.balances.current || 0,
+          availableBalance: account.balances.available,
+          currency: account.balances.iso_currency_code || 'USD',
+          institutionName: item.institution_name,
+          itemId: item.item_id,
+          lastSyncTime: new Date(item.updated_at).getTime(),
+          connectionStatus: 'HEALTHY',
+          mask: account.mask
+        }));
+
+        allAccounts.push(...accounts);
+      } catch (accountError) {
+        console.error(`Failed to fetch accounts for item ${item.item_id}:`, accountError.message);
+        // Continue with other accounts even if one fails
+      }
+    }
+
+    res.json({ 
+      accounts: allAccounts,
+      institutionsCount: plaidItems.rows.length,
+      accountsCount: allAccounts.length
+    });
   } catch (error) {
     console.error('Get accounts error:', error);
     res.status(500).json({ error: 'Failed to fetch accounts' });
@@ -3124,18 +3235,51 @@ async function fetchAndStoreTransactions(userId, accessToken) {
 
 async function updateSpendingPatterns(userId) {
   try {
+    console.log('🔄 Updating spending patterns for user:', userId);
+    
+    // First, let's check what transaction data we have
+    const transactionCheck = await pool.query(`
+      SELECT COUNT(*) as count, 
+             MIN(date) as earliest_date, 
+             MAX(date) as latest_date,
+             array_agg(DISTINCT category) as categories
+      FROM transactions 
+      WHERE user_id = $1
+    `, [userId]);
+    
+    console.log('📊 Transaction data:', transactionCheck.rows[0]);
+
     // Calculate monthly spending patterns by category
+    // Handle both array and string category formats
     const patterns = await pool.query(`
       SELECT 
-        category[1] as main_category,
+        CASE 
+          WHEN category IS NULL THEN 'General'
+          WHEN array_length(category, 1) > 0 THEN category[1]
+          ELSE COALESCE(category::text, 'General')
+        END as main_category,
         DATE_TRUNC('month', date) as month,
         SUM(ABS(amount)) as total_amount,
         COUNT(*) as transaction_count,
         AVG(ABS(amount)) as average_transaction
       FROM transactions 
-      WHERE user_id = $1 AND date >= NOW() - INTERVAL '6 months'
-      GROUP BY category[1], DATE_TRUNC('month', date)
+      WHERE user_id = $1 AND date >= NOW() - INTERVAL '6 months' AND amount < 0
+      GROUP BY 
+        CASE 
+          WHEN category IS NULL THEN 'General'
+          WHEN array_length(category, 1) > 0 THEN category[1]
+          ELSE COALESCE(category::text, 'General')
+        END, 
+        DATE_TRUNC('month', date)
       ORDER BY month DESC, total_amount DESC
+    `, [userId]);
+
+    console.log(`📈 Found ${patterns.rows.length} spending patterns to process`);
+
+    // Clear existing patterns for this user to avoid duplicates
+    await pool.query(`
+      DELETE FROM spending_patterns 
+      WHERE user_id = $1 AND period_type = 'monthly'
     `, [userId]);
 
     // Store patterns and calculate trends
@@ -3147,17 +3291,13 @@ async function updateSpendingPatterns(userId) {
       monthEnd.setMonth(monthEnd.getMonth() + 1);
       monthEnd.setDate(0); // Last day of month
 
+      console.log(`💾 Storing pattern: ${pattern.main_category} - $${pattern.total_amount} (${pattern.transaction_count} transactions)`);
+
       await pool.query(`
         INSERT INTO spending_patterns (
           user_id, category, period_type, period_start, period_end,
           total_amount, transaction_count, average_transaction
         ) VALUES ($1, $2, 'monthly', $3, $4, $5, $6, $7)
-        ON CONFLICT (user_id, category, period_type, period_start) 
-        DO UPDATE SET
-          total_amount = EXCLUDED.total_amount,
-          transaction_count = EXCLUDED.transaction_count,
-          average_transaction = EXCLUDED.average_transaction,
-          created_at = NOW()
       `, [
         userId,
         pattern.main_category,
@@ -3169,8 +3309,11 @@ async function updateSpendingPatterns(userId) {
       ]);
     }
 
+    console.log('✅ Spending patterns updated successfully');
+
   } catch (error) {
     console.error('❌ Error updating spending patterns:', error);
+    console.error('❌ Error details:', error.message);
   }
 }
 
