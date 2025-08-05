@@ -3354,20 +3354,34 @@ async function updateSpendingPatterns(userId) {
 
       console.log(`💾 Storing pattern: ${pattern.main_category} - $${pattern.total_amount} (${pattern.transaction_count} transactions)`);
 
-      await pool.query(`
-        INSERT INTO spending_patterns (
-          user_id, category, period_type, period_start, period_end,
-          total_amount, transaction_count, average_transaction
-        ) VALUES ($1, $2, 'monthly', $3, $4, $5, $6, $7)
-      `, [
-        userId,
-        pattern.main_category,
-        monthStart,
-        monthEnd,
-        pattern.total_amount,
-        pattern.transaction_count,
-        pattern.average_transaction
-      ]);
+      try {
+        await pool.query(`
+          INSERT INTO spending_patterns (
+            user_id, category, period_type, period_start, period_end,
+            total_amount, transaction_count, average_transaction
+          ) VALUES ($1, $2, 'monthly', $3, $4, $5, $6, $7)
+        `, [
+          userId,
+          pattern.main_category,
+          monthStart,
+          monthEnd,
+          pattern.total_amount,
+          pattern.transaction_count,
+          pattern.average_transaction
+        ]);
+        console.log(`✅ Successfully stored pattern for ${pattern.main_category}`);
+      } catch (insertError) {
+        console.error(`❌ Failed to insert pattern for ${pattern.main_category}:`, insertError.message);
+        console.error('   Values:', {
+          userId,
+          category: pattern.main_category,
+          monthStart,
+          monthEnd,
+          total_amount: pattern.total_amount,
+          transaction_count: pattern.transaction_count,
+          average_transaction: pattern.average_transaction
+        });
+      }
     }
 
     console.log('✅ Spending patterns updated successfully');
