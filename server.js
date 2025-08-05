@@ -1528,6 +1528,53 @@ app.post('/api/spending-patterns/generate', authenticateToken, async (req, res) 
     const userId = req.user.userId;
     console.log('🔧 Manual spending pattern generation requested for user:', userId);
     
+    // First, let's check what transaction data we have
+    const transactionCheck = await pool.query(`
+      SELECT COUNT(*) as total_count,
+             COUNT(CASE WHEN CAST(amount AS DECIMAL) < 0 THEN 1 END) as expense_count,
+             MIN(date) as earliest_date,
+             MAX(date) as latest_date
+      FROM transactions 
+      WHERE user_id = $1
+    `, [userId]);
+    
+    console.log('📊 Transaction check for user:', userId);
+    console.log('   Total transactions:', transactionCheck.rows[0].total_count);
+    console.log('   Expense transactions:', transactionCheck.rows[0].expense_count);
+    console.log('   Date range:', transactionCheck.rows[0].earliest_date, 'to', transactionCheck.rows[0].latest_date);
+    
+    // Test the exact SQL query we're using
+    const testQuery = await pool.query(`
+      SELECT 
+        COALESCE(
+          CASE 
+            WHEN category IS NOT NULL AND array_length(category, 1) > 0 THEN category[1]
+            ELSE NULL
+          END, 
+          'General'
+        ) as main_category,
+        DATE_TRUNC('month', date) as month,
+        SUM(ABS(CAST(amount AS DECIMAL))) as total_amount,
+        COUNT(*) as transaction_count,
+        AVG(ABS(CAST(amount AS DECIMAL))) as average_transaction
+      FROM transactions 
+      WHERE user_id = $1 
+        AND date >= NOW() - INTERVAL '6 months' 
+        AND CAST(amount AS DECIMAL) < 0
+      GROUP BY 
+        COALESCE(
+          CASE 
+            WHEN category IS NOT NULL AND array_length(category, 1) > 0 THEN category[1]
+            ELSE NULL
+          END, 
+          'General'
+        ), 
+        DATE_TRUNC('month', date)
+      ORDER BY month DESC, total_amount DESC
+    `, [userId]);
+    
+    console.log('🔍 SQL query results:', testQuery.rows);
+    
     await updateSpendingPatterns(userId);
     
     // Get the generated patterns
@@ -1543,11 +1590,19 @@ app.post('/api/spending-patterns/generate', authenticateToken, async (req, res) 
       success: true,
       message: 'Spending patterns generated successfully',
       patterns_generated: result.rows.length,
-      patterns: result.rows
+      patterns: result.rows,
+      debug: {
+        user_id: userId,
+        transaction_check: transactionCheck.rows[0],
+        sql_query_results: testQuery.rows
+      }
     });
   } catch (error) {
     console.error('Manual spending pattern generation error:', error);
-    res.status(500).json({ error: 'Failed to generate spending patterns' });
+    res.status(500).json({ 
+      error: 'Failed to generate spending patterns',
+      details: error.message 
+    });
   }
 });
 
