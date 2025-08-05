@@ -3250,26 +3250,32 @@ async function updateSpendingPatterns(userId) {
     console.log('📊 Transaction data:', transactionCheck.rows[0]);
 
     // Calculate monthly spending patterns by category
-    // Handle both array and string category formats
+    // Handle null categories and convert string amounts to numeric
     const patterns = await pool.query(`
       SELECT 
-        CASE 
-          WHEN category IS NULL THEN 'General'
-          WHEN array_length(category, 1) > 0 THEN category[1]
-          ELSE COALESCE(category::text, 'General')
-        END as main_category,
+        COALESCE(
+          CASE 
+            WHEN category IS NOT NULL AND array_length(category, 1) > 0 THEN category[1]
+            ELSE NULL
+          END, 
+          'General'
+        ) as main_category,
         DATE_TRUNC('month', date) as month,
-        SUM(ABS(amount)) as total_amount,
+        SUM(ABS(CAST(amount AS DECIMAL))) as total_amount,
         COUNT(*) as transaction_count,
-        AVG(ABS(amount)) as average_transaction
+        AVG(ABS(CAST(amount AS DECIMAL))) as average_transaction
       FROM transactions 
-      WHERE user_id = $1 AND date >= NOW() - INTERVAL '6 months' AND amount < 0
+      WHERE user_id = $1 
+        AND date >= NOW() - INTERVAL '6 months' 
+        AND CAST(amount AS DECIMAL) < 0
       GROUP BY 
-        CASE 
-          WHEN category IS NULL THEN 'General'
-          WHEN array_length(category, 1) > 0 THEN category[1]
-          ELSE COALESCE(category::text, 'General')
-        END, 
+        COALESCE(
+          CASE 
+            WHEN category IS NOT NULL AND array_length(category, 1) > 0 THEN category[1]
+            ELSE NULL
+          END, 
+          'General'
+        ), 
         DATE_TRUNC('month', date)
       ORDER BY month DESC, total_amount DESC
     `, [userId]);
